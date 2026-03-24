@@ -24,10 +24,10 @@ YELLOW = "#F6E06E"
 BLUE = "#90C5FF"
 RED = "#F2A093"
 NAVY = "#223248"
-GRID = "#D9E1EA"
-CARD_BG = "#FFFFFF"
-CARD_BORDER = "#E8EEF5"
+CARD_BORDER = "#E3EAF2"
 PAGE_BG = "#F7FAFC"
+MUTED = "#748091"
+
 
 PROTOCOL_HEX = {
     1: YELLOW,
@@ -56,61 +56,65 @@ def inject_css():
         }}
 
         .block-container {{
-            padding-top: 1.2rem;
+            max-width: 1480px;
+            padding-top: 0.8rem;
             padding-bottom: 1.5rem;
-            max-width: 1500px;
+        }}
+
+        header[data-testid="stHeader"] {{
+            background: transparent;
         }}
 
         .app-title {{
             font-size: 2rem;
             font-weight: 700;
             color: {NAVY};
-            margin-bottom: 0.25rem;
+            margin-top: 0;
+            margin-bottom: 0.2rem;
+            line-height: 1.15;
         }}
 
         .app-subtitle {{
-            color: #6E7B8C;
-            margin-bottom: 1.2rem;
+            color: {MUTED};
+            margin-bottom: 1rem;
+        }}
+
+        .soft-rule {{
+            border: none;
+            border-top: 1px solid {CARD_BORDER};
+            margin: 0.6rem 0 1rem 0;
         }}
 
         .metric-card {{
-            background: {CARD_BG};
+            background: white;
             border: 1px solid {CARD_BORDER};
-            border-radius: 18px;
-            padding: 16px 18px;
-            box-shadow: 0 1px 3px rgba(34,50,72,0.04);
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 1px 2px rgba(34,50,72,0.04);
         }}
 
         .metric-label {{
-            font-size: 0.9rem;
-            color: #748091;
-            margin-bottom: 0.2rem;
+            font-size: 0.88rem;
+            color: {MUTED};
+            margin-bottom: 0.18rem;
         }}
 
         .metric-value {{
-            font-size: 1.35rem;
+            font-size: 1.2rem;
             font-weight: 700;
             color: {NAVY};
-        }}
-
-        .section-card {{
-            background: {CARD_BG};
-            border: 1px solid {CARD_BORDER};
-            border-radius: 22px;
-            padding: 18px 18px 12px 18px;
-            margin-bottom: 18px;
-            box-shadow: 0 1px 3px rgba(34,50,72,0.04);
+            line-height: 1.2;
         }}
 
         .section-title {{
-            font-size: 1.08rem;
+            font-size: 1.06rem;
             font-weight: 700;
             color: {NAVY};
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.35rem;
         }}
 
         .small-muted {{
-            color: #748091;
+            color: {MUTED};
             font-size: 0.92rem;
         }}
 
@@ -118,9 +122,10 @@ def inject_css():
             font-weight: 600;
         }}
 
-        .session-meta {{
-            line-height: 1.8;
-            color: {NAVY};
+        .stDataFrame {{
+            border: 1px solid {CARD_BORDER};
+            border-radius: 14px;
+            overflow: hidden;
         }}
         </style>
         """,
@@ -189,16 +194,11 @@ def image_exists(path):
     return path is not None and Path(path).exists()
 
 
-def show_image_card(path, title=None):
-    with st.container():
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        if title:
-            st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
-        if image_exists(path):
-            st.image(str(path), use_container_width=True)
-        else:
-            st.info("Image not available.")
-        st.markdown("</div>", unsafe_allow_html=True)
+def show_image(path):
+    if image_exists(path):
+        st.image(str(path), use_container_width=True)
+    else:
+        st.info("Image not available.")
 
 
 def metric_card(label, value):
@@ -211,6 +211,13 @@ def metric_card(label, value):
         """,
         unsafe_allow_html=True,
     )
+
+
+def section_header(title, subtitle=None):
+    st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
+    if subtitle:
+        st.markdown(f'<div class="small-muted">{subtitle}</div>', unsafe_allow_html=True)
+    st.markdown('<hr class="soft-rule">', unsafe_allow_html=True)
 
 
 inject_css()
@@ -235,33 +242,7 @@ try:
     with st.sidebar:
         st.markdown("## Navigation")
         mouse_id = st.selectbox("Mouse", mouse_options)
-
-        df_mouse_sidebar = df[df["Mouse_ID"] == mouse_id].copy()
-        df_mouse_sidebar["date_str"] = df_mouse_sidebar["Date"].dt.strftime("%Y-%m-%d")
-        df_mouse_sidebar["protocol_label"] = (
-            df_mouse_sidebar["Protocol"]
-            .apply(lambda x: PROTOCOL_LABELS.get(int(x), f"Protocol {int(x)}") if pd.notna(x) else "-")
-        )
-
-        if not df_mouse_sidebar.empty:
-            df_mouse_sidebar["session_label"] = (
-                df_mouse_sidebar["date_str"]
-                + " - v"
-                + df_mouse_sidebar["Version"].astype(str)
-                + " - "
-                + df_mouse_sidebar["protocol_label"]
-            )
-            default_idx = len(df_mouse_sidebar) - 1
-            session_label = st.selectbox(
-                "Session",
-                df_mouse_sidebar["session_label"].tolist(),
-                index=default_idx,
-            )
-        else:
-            session_label = None
-
         st.markdown("---")
-        st.markdown("## Cache")
         st.caption(f"Sessions: {len(df)}")
         st.caption(f"Mice: {df['Mouse_ID'].nunique()}")
 
@@ -276,6 +257,8 @@ try:
         latest_date = df_mouse["Date"].max()
         metric_card("Latest session", latest_date.strftime("%Y-%m-%d") if pd.notna(latest_date) else "-")
 
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
     tab1, tab2 = st.tabs(["Overview", "Session focus"])
 
     with tab1:
@@ -284,8 +267,7 @@ try:
         else:
             first_row = df_mouse.iloc[0]
 
-            st.markdown('<div class="section-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Session table</div>', unsafe_allow_html=True)
+            section_header("Session table")
             show_cols = [
                 c for c in [
                     "Date",
@@ -301,39 +283,37 @@ try:
                 use_container_width=True,
                 hide_index=True,
             )
-            st.markdown("</div>", unsafe_allow_html=True)
 
-            row_a, row_b = st.columns(2)
-            with row_a:
-                show_image_card(
-                    abs_cache_path(local_cache_dir, first_row.get("protocol_strip_path")),
-                    "Session types",
-                )
-                show_image_card(
-                    abs_cache_path(local_cache_dir, first_row.get("stacked_lick_counts_path")),
-                    "Lick counts per session",
-                )
-                show_image_card(
-                    abs_cache_path(local_cache_dir, first_row.get("kde_failures_by_session_path")),
-                    "KDE of consecutive failures by task session",
-                )
+            st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
 
-            with row_b:
-                show_image_card(
-                    abs_cache_path(local_cache_dir, first_row.get("bout_count_rewards_path")),
-                    "Bout count and rewarded licks",
-                )
-                show_image_card(
-                    abs_cache_path(local_cache_dir, first_row.get("histogram_kde_failures_path")),
-                    "Distribution of consecutive failures",
-                )
-                show_image_card(
-                    abs_cache_path(local_cache_dir, first_row.get("regression_rewards_failures_and_slope_path")),
-                    "Reward/failure regression and slope",
-                )
+            section_header("Session types")
+            show_image(abs_cache_path(local_cache_dir, first_row.get("protocol_strip_path")))
+
+            st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+
+            section_header("Training progression")
+            c1, c2 = st.columns(2)
+            with c1:
+                show_image(abs_cache_path(local_cache_dir, first_row.get("bout_count_rewards_path")))
+            with c2:
+                show_image(abs_cache_path(local_cache_dir, first_row.get("stacked_lick_counts_path")))
+
+            st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+
+            section_header("Failure distributions")
+            c3, c4 = st.columns(2)
+            with c3:
+                show_image(abs_cache_path(local_cache_dir, first_row.get("histogram_kde_failures_path")))
+            with c4:
+                show_image(abs_cache_path(local_cache_dir, first_row.get("kde_failures_by_session_path")))
+
+            st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+
+            section_header("Reward / failure regression")
+            show_image(abs_cache_path(local_cache_dir, first_row.get("regression_rewards_failures_and_slope_path")))
 
     with tab2:
-        if df_mouse.empty or session_label is None:
+        if df_mouse.empty:
             st.info("No session available.")
         else:
             df_mouse = df_mouse.copy()
@@ -350,36 +330,40 @@ try:
                 + df_mouse["protocol_label"]
             )
 
+            default_idx = len(df_mouse) - 1 if len(df_mouse) > 0 else 0
+            session_label = st.selectbox(
+                "Choose session",
+                df_mouse["session_label"].tolist(),
+                index=default_idx,
+            )
+
             row = df_mouse[df_mouse["session_label"] == session_label].iloc[0]
 
-            st.markdown('<div class="section-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Session metadata</div>', unsafe_allow_html=True)
-            st.markdown(
-                f"""
-                <div class="session-meta">
-                    <b>Date:</b> {row['date_str']}<br>
-                    <b>Version:</b> {row['Version']}<br>
-                    <b>Protocol:</b> {row['protocol_label']}<br>
-                    <b>Probas:</b> {row['Probas']}<br>
-                    <b>Number of Bouts:</b> {row['Number of Bouts']}<br>
-                    <b>Number of Rewarded Licks:</b> {row['Number of Rewarded Licks']}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
+            section_header("Session metadata")
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                metric_card("Date", row["date_str"])
+            with m2:
+                metric_card("Version", row["Version"])
+            with m3:
+                metric_card("Protocol", row["protocol_label"])
 
+            m4, m5, m6 = st.columns(3)
+            with m4:
+                metric_card("Probas", row["Probas"])
+            with m5:
+                metric_card("Number of Bouts", row["Number of Bouts"])
+            with m6:
+                metric_card("Rewarded Licks", row["Number of Rewarded Licks"])
+
+            st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+
+            section_header("Session plots")
             col1, col2 = st.columns(2)
             with col1:
-                show_image_card(
-                    abs_cache_path(local_cache_dir, row.get("session_rewards_vs_failures_path")),
-                    "Rewards vs failures",
-                )
+                show_image(abs_cache_path(local_cache_dir, row.get("session_rewards_vs_failures_path")))
             with col2:
-                show_image_card(
-                    abs_cache_path(local_cache_dir, row.get("session_failure_distribution_path")),
-                    "Failure distribution",
-                )
+                show_image(abs_cache_path(local_cache_dir, row.get("session_failure_distribution_path")))
 
 except Exception as e:
     st.error("App failed")
