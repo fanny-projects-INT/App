@@ -29,8 +29,11 @@ PAGE_BG = "#F7FAFC"
 MUTED = "#748091"
 WHITE = "#FFFFFF"
 
-PROTOCOL_HEX = {1: YELLOW, 2: BLUE, 3: RED}
-PROTOCOL_LABELS = {1: "Training 1", 2: "Training 2", 3: "Task"}
+PROTOCOL_LABELS = {
+    1: "Training 1",
+    2: "Training 2",
+    3: "Task",
+}
 
 
 # =============================================================================
@@ -74,13 +77,13 @@ def inject_css():
 
         .section-wrap {{
             margin-top: 0.3rem;
-            margin-bottom: 1rem;
+            margin-bottom: 0.9rem;
         }}
 
         .section-rule {{
             border: none;
             border-top: 1px solid {CARD_BORDER};
-            margin: 0 0 0.3rem 0;
+            margin: 0 0 0.22rem 0;
         }}
 
         .section-title {{
@@ -112,29 +115,15 @@ def inject_css():
             line-height: 1.2;
         }}
 
-        .panel {{
-            background: {WHITE};
-            border: 1px solid {CARD_BORDER};
-            border-radius: 18px;
-            padding: 14px 14px 10px 14px;
-            margin-bottom: 0.95rem;
-            box-shadow: 0 1px 2px rgba(34,50,72,0.04);
-        }}
-
-        .small-muted {{
-            color: {MUTED};
-            font-size: 0.9rem;
-        }}
-
         .stDataFrame {{
             border: 1px solid {CARD_BORDER};
             border-radius: 14px;
             overflow: hidden;
         }}
 
-        div[data-testid="stHorizontalBlock"] > div {{
-            padding-right: 0.2rem;
-            padding-left: 0.2rem;
+        .small-muted {{
+            color: {MUTED};
+            font-size: 0.9rem;
         }}
         </style>
         """,
@@ -168,6 +157,7 @@ def load_metadata(cache_dir: str):
     df = pd.read_parquet(Path(cache_dir) / "metadata.parquet").copy()
 
     df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
+
     if "Date_norm" in df.columns:
         df["Date_norm"] = pd.to_datetime(df["Date_norm"], errors="coerce")
     else:
@@ -220,14 +210,6 @@ def section(title):
     )
 
 
-def open_panel():
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-
-
-def close_panel():
-    st.markdown('</div>', unsafe_allow_html=True)
-
-
 # =============================================================================
 # APP
 # =============================================================================
@@ -244,7 +226,21 @@ try:
         st.warning("No metadata found.")
         st.stop()
 
-    mouse_id = st.sidebar.selectbox("Mouse", sorted(df["Mouse_ID"].unique().tolist()))
+    latest_per_mouse = df.groupby("Mouse_ID", dropna=False)["Date"].max().dropna()
+    if latest_per_mouse.empty:
+        mouse_options = sorted(df["Mouse_ID"].unique().tolist())
+        default_mouse = mouse_options[0]
+    else:
+        default_mouse = latest_per_mouse.idxmax()
+        mouse_options = sorted(df["Mouse_ID"].unique().tolist())
+
+    default_mouse_index = mouse_options.index(default_mouse) if default_mouse in mouse_options else 0
+
+    mouse_id = st.sidebar.selectbox(
+        "Mouse",
+        mouse_options,
+        index=default_mouse_index,
+    )
 
     df_mouse = df[df["Mouse_ID"] == mouse_id].copy()
 
@@ -276,7 +272,6 @@ try:
 
         row = df_mouse.iloc[0]
 
-        open_panel()
         section("Session table")
         show_cols = [
             c for c in [
@@ -289,33 +284,32 @@ try:
             ] if c in df_mouse.columns
         ]
         st.dataframe(df_mouse[show_cols], use_container_width=True, hide_index=True)
-        close_panel()
 
-        open_panel()
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
         section("Session types")
         show_image(abs_cache_path(cache_dir, row["protocol_strip_path"]))
-        close_panel()
 
-        open_panel()
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
         section("Training progression")
         show_image(abs_cache_path(cache_dir, row["bout_count_rewards_path"]))
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
         show_image(abs_cache_path(cache_dir, row["stacked_lick_counts_path"]))
-        close_panel()
 
-        open_panel()
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
         section("Failure distributions")
         col1, col2 = st.columns(2)
         with col1:
             show_image(abs_cache_path(cache_dir, row["histogram_kde_failures_path"]))
         with col2:
             show_image(abs_cache_path(cache_dir, row["kde_failures_by_session_path"]))
-        close_panel()
 
-        open_panel()
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
         section("Regression")
         show_image(abs_cache_path(cache_dir, row["regression_rewards_failures_and_slope_path"]))
-        close_panel()
 
     # =========================================================================
     # SESSION FOCUS
@@ -338,10 +332,8 @@ try:
         selected = st.selectbox("Session", df_mouse["label"].tolist(), index=default_idx)
         row = df_mouse[df_mouse["label"] == selected].iloc[0]
 
-        open_panel()
         section("Session metadata")
-
-        m1, m2 = st.columns(2, gap="small")
+        m1, m2 = st.columns(2, gap="medium")
         with m1:
             metric_card("Date", row["Date"].strftime("%Y-%m-%d"))
         with m2:
@@ -350,23 +342,22 @@ try:
                 PROTOCOL_LABELS.get(int(row["Protocol"]), "-") if pd.notna(row["Protocol"]) else "-"
             )
 
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-        m3, m4 = st.columns(2, gap="small")
+        m3, m4 = st.columns(2, gap="medium")
         with m3:
             metric_card("Probas", row["Probas"])
         with m4:
             metric_card("Number of Bouts", row["Number of Bouts"])
-        close_panel()
 
-        open_panel()
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+
         section("Session plots")
         col1, col2 = st.columns(2)
         with col1:
             show_image(abs_cache_path(cache_dir, row["session_rewards_vs_failures_path"]))
         with col2:
             show_image(abs_cache_path(cache_dir, row["session_failure_distribution_path"]))
-        close_panel()
 
 except Exception as e:
     st.error("App failed")
