@@ -27,6 +27,7 @@ NAVY = "#223248"
 CARD_BORDER = "#E3EAF2"
 PAGE_BG = "#F7FAFC"
 MUTED = "#748091"
+WHITE = "#FFFFFF"
 
 PROTOCOL_HEX = {1: YELLOW, 2: BLUE, 3: RED}
 PROTOCOL_LABELS = {1: "Training 1", 2: "Training 2", 3: "Task"}
@@ -44,14 +45,14 @@ def inject_css():
         }}
 
         section[data-testid="stSidebar"] {{
-            background: #FFFFFF;
+            background: {WHITE};
             border-right: 1px solid {CARD_BORDER};
         }}
 
         .block-container {{
-            max-width: 1480px;
-            padding-top: 0.6rem;
-            padding-bottom: 1.2rem;
+            max-width: 1460px;
+            padding-top: 0.55rem;
+            padding-bottom: 1.25rem;
         }}
 
         header[data-testid="stHeader"] {{
@@ -59,52 +60,81 @@ def inject_css():
         }}
 
         .app-title {{
-            font-size: 2rem;
+            font-size: 1.95rem;
             font-weight: 700;
             color: {NAVY};
-            margin-bottom: 0.1rem;
+            margin-bottom: 0.08rem;
+            line-height: 1.15;
         }}
 
         .app-subtitle {{
             color: {MUTED};
-            margin-bottom: 0.6rem;
+            margin-bottom: 0.65rem;
         }}
 
-        /* 🔥 TITRES + LIGNES COMPACT */
-        .section-title {{
-            font-size: 1.05rem;
-            font-weight: 700;
-            color: {NAVY};
-            margin-bottom: 0.15rem;
+        .section-wrap {{
+            margin-top: 0.3rem;
+            margin-bottom: 1rem;
         }}
 
-        .soft-rule {{
+        .section-rule {{
             border: none;
             border-top: 1px solid {CARD_BORDER};
-            margin: 0.25rem 0 0.6rem 0;
+            margin: 0 0 0.3rem 0;
+        }}
+
+        .section-title {{
+            font-size: 1.03rem;
+            font-weight: 700;
+            color: {NAVY};
+            margin: 0;
+            line-height: 1.2;
         }}
 
         .metric-card {{
-            background: white;
+            background: {WHITE};
             border: 1px solid {CARD_BORDER};
             border-radius: 16px;
-            padding: 14px;
+            padding: 14px 16px;
+            box-shadow: 0 1px 2px rgba(34,50,72,0.04);
         }}
 
         .metric-label {{
-            font-size: 0.85rem;
+            font-size: 0.84rem;
             color: {MUTED};
+            margin-bottom: 0.16rem;
         }}
 
         .metric-value {{
-            font-size: 1.2rem;
+            font-size: 1.18rem;
             font-weight: 700;
             color: {NAVY};
+            line-height: 1.2;
+        }}
+
+        .panel {{
+            background: {WHITE};
+            border: 1px solid {CARD_BORDER};
+            border-radius: 18px;
+            padding: 14px 14px 10px 14px;
+            margin-bottom: 0.95rem;
+            box-shadow: 0 1px 2px rgba(34,50,72,0.04);
         }}
 
         .small-muted {{
             color: {MUTED};
             font-size: 0.9rem;
+        }}
+
+        .stDataFrame {{
+            border: 1px solid {CARD_BORDER};
+            border-radius: 14px;
+            overflow: hidden;
+        }}
+
+        div[data-testid="stHorizontalBlock"] > div {{
+            padding-right: 0.2rem;
+            padding-left: 0.2rem;
         }}
         </style>
         """,
@@ -124,7 +154,8 @@ def ensure_cache_local():
         response.raise_for_status()
         with open(CACHE_ZIP, "wb") as f:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
+                if chunk:
+                    f.write(chunk)
 
     with zipfile.ZipFile(CACHE_ZIP, "r") as zf:
         zf.extractall(CACHE_DIR)
@@ -134,15 +165,19 @@ def ensure_cache_local():
 
 @st.cache_data(show_spinner=False)
 def load_metadata(cache_dir: str):
-    df = pd.read_parquet(Path(cache_dir) / "metadata.parquet")
+    df = pd.read_parquet(Path(cache_dir) / "metadata.parquet").copy()
 
     df["Date"] = pd.to_datetime(df.get("Date"), errors="coerce")
-    df["Date_norm"] = df.get("Date_norm", df["Date"]).dt.normalize()
+    if "Date_norm" in df.columns:
+        df["Date_norm"] = pd.to_datetime(df["Date_norm"], errors="coerce")
+    else:
+        df["Date_norm"] = df["Date"].dt.normalize()
+
     df["Mouse_ID"] = df.get("Mouse_ID", "").astype(str)
     df["Version"] = df.get("Version", "").astype(str)
     df["Protocol"] = pd.to_numeric(df.get("Protocol"), errors="coerce")
 
-    return df.sort_values(["Mouse_ID", "Date"]).reset_index(drop=True)
+    return df.sort_values(["Mouse_ID", "Date", "Version"]).reset_index(drop=True)
 
 
 def abs_cache_path(cache_dir, rel):
@@ -174,8 +209,23 @@ def metric_card(label, value):
 
 
 def section(title):
-    st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
-    st.markdown('<hr class="soft-rule">', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="section-wrap">
+            <hr class="section-rule">
+            <div class="section-title">{title}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def open_panel():
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+
+
+def close_panel():
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # =============================================================================
@@ -190,90 +240,133 @@ try:
     cache_dir = ensure_cache_local()
     df = load_metadata(cache_dir)
 
-    mouse_id = st.sidebar.selectbox(
-        "Mouse",
-        sorted(df["Mouse_ID"].unique())
-    )
+    if df.empty:
+        st.warning("No metadata found.")
+        st.stop()
 
-    df_mouse = df[df["Mouse_ID"] == mouse_id]
+    mouse_id = st.sidebar.selectbox("Mouse", sorted(df["Mouse_ID"].unique().tolist()))
 
-    # === TOP METRICS
+    df_mouse = df[df["Mouse_ID"] == mouse_id].copy()
+
+    with st.sidebar:
+        st.markdown("---")
+        view_mode = st.radio("View", ["Overview", "Session focus"], index=0)
+        st.markdown("---")
+        st.caption(f"Sessions: {len(df_mouse)}")
+        st.caption(f"Mice: {df['Mouse_ID'].nunique()}")
+
     c1, c2, c3 = st.columns(3)
     with c1:
         metric_card("Mouse", mouse_id)
     with c2:
         metric_card("Sessions", len(df_mouse))
     with c3:
-        metric_card("Last session", df_mouse["Date"].max().strftime("%Y-%m-%d"))
+        latest_date = df_mouse["Date"].max()
+        metric_card("Latest session", latest_date.strftime("%Y-%m-%d") if pd.notna(latest_date) else "-")
 
-    tab1, tab2 = st.tabs(["Overview", "Session focus"])
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-    # =============================================================================
+    # =========================================================================
     # OVERVIEW
-    # =============================================================================
-    with tab1:
+    # =========================================================================
+    if view_mode == "Overview":
+        if df_mouse.empty:
+            st.info("No sessions for this mouse.")
+            st.stop()
 
         row = df_mouse.iloc[0]
 
+        open_panel()
+        section("Session table")
+        show_cols = [
+            c for c in [
+                "Date",
+                "Version",
+                "Protocol",
+                "Probas",
+                "Number of Bouts",
+                "Number of Rewarded Licks",
+            ] if c in df_mouse.columns
+        ]
+        st.dataframe(df_mouse[show_cols], use_container_width=True, hide_index=True)
+        close_panel()
+
+        open_panel()
         section("Session types")
         show_image(abs_cache_path(cache_dir, row["protocol_strip_path"]))
+        close_panel()
 
+        open_panel()
         section("Training progression")
+        show_image(abs_cache_path(cache_dir, row["bout_count_rewards_path"]))
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        show_image(abs_cache_path(cache_dir, row["stacked_lick_counts_path"]))
+        close_panel()
+
+        open_panel()
+        section("Failure distributions")
         col1, col2 = st.columns(2)
         with col1:
-            show_image(abs_cache_path(cache_dir, row["bout_count_rewards_path"]))
-        with col2:
-            show_image(abs_cache_path(cache_dir, row["stacked_lick_counts_path"]))
-
-        section("Failure distributions")
-        col3, col4 = st.columns(2)
-        with col3:
             show_image(abs_cache_path(cache_dir, row["histogram_kde_failures_path"]))
-        with col4:
+        with col2:
             show_image(abs_cache_path(cache_dir, row["kde_failures_by_session_path"]))
+        close_panel()
 
+        open_panel()
         section("Regression")
         show_image(abs_cache_path(cache_dir, row["regression_rewards_failures_and_slope_path"]))
+        close_panel()
 
-    # =============================================================================
+    # =========================================================================
     # SESSION FOCUS
-    # =============================================================================
-    with tab2:
+    # =========================================================================
+    else:
+        if df_mouse.empty:
+            st.info("No session available.")
+            st.stop()
 
+        df_mouse = df_mouse.copy()
         df_mouse["label"] = (
             df_mouse["Date"].dt.strftime("%Y-%m-%d")
-            + " - v"
-            + df_mouse["Version"]
+            + " - "
+            + df_mouse["Protocol"].apply(
+                lambda x: PROTOCOL_LABELS.get(int(x), f"Protocol {int(x)}") if pd.notna(x) else "-"
+            )
         )
 
-        selected = st.selectbox("Session", df_mouse["label"])
+        default_idx = len(df_mouse) - 1 if len(df_mouse) > 0 else 0
+        selected = st.selectbox("Session", df_mouse["label"].tolist(), index=default_idx)
         row = df_mouse[df_mouse["label"] == selected].iloc[0]
 
+        open_panel()
         section("Session metadata")
 
-        c1, c2, c3 = st.columns(3)
-        with c1:
+        m1, m2 = st.columns(2, gap="small")
+        with m1:
             metric_card("Date", row["Date"].strftime("%Y-%m-%d"))
-        with c2:
-            metric_card("Version", row["Version"])
-        with c3:
-            metric_card("Protocol", PROTOCOL_LABELS.get(int(row["Protocol"]), "-"))
+        with m2:
+            metric_card(
+                "Protocol",
+                PROTOCOL_LABELS.get(int(row["Protocol"]), "-") if pd.notna(row["Protocol"]) else "-"
+            )
 
-        c4, c5, c6 = st.columns(3)
-        with c4:
+        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+
+        m3, m4 = st.columns(2, gap="small")
+        with m3:
             metric_card("Probas", row["Probas"])
-        with c5:
-            metric_card("Bouts", row["Number of Bouts"])
-        with c6:
-            metric_card("Rewards", row["Number of Rewarded Licks"])
+        with m4:
+            metric_card("Number of Bouts", row["Number of Bouts"])
+        close_panel()
 
+        open_panel()
         section("Session plots")
-
         col1, col2 = st.columns(2)
         with col1:
             show_image(abs_cache_path(cache_dir, row["session_rewards_vs_failures_path"]))
         with col2:
             show_image(abs_cache_path(cache_dir, row["session_failure_distribution_path"]))
+        close_panel()
 
 except Exception as e:
     st.error("App failed")
