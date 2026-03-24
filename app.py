@@ -1,4 +1,5 @@
 from pathlib import Path
+import requests
 
 import numpy as np
 import pandas as pd
@@ -25,7 +26,11 @@ from app_functions import (
 # =============================================================================
 # CONFIG
 # =============================================================================
-DB_PATH = Path(r"\\SynoINVIBE_Caze\INVIBE_team_Cazettes\data\database\full_db_all_rigs.feather")
+DB_URL = "https://github.com/fanny-projects-INT/App/releases/latest/download/full_db_all_rigs.feather"
+DATA_DIR = Path(__file__).resolve().parent / "data"
+DATA_DIR.mkdir(exist_ok=True)
+DB_PATH = DATA_DIR / "full_db_all_rigs.feather"
+
 DEFAULT_VERSION = "1"
 DEFAULT_REWARD_CUT = 7
 DEFAULT_FAILURE_MAX = 25
@@ -33,7 +38,7 @@ DEFAULT_FAILURE_MAX = 25
 st.set_page_config(
     page_title="Mouse Behavior Dashboard",
     page_icon="🐭",
-    layout="wide"
+    layout="wide",
 )
 
 st.markdown("""
@@ -139,6 +144,7 @@ def render_visual_calendar(valid_sessions, selected_date):
         for d in month_days:
             proto = session_date_to_protocol.get(d, None)
             cls = "calendar-empty"
+
             if proto == 1:
                 cls = "calendar-t1"
             elif proto == 2:
@@ -157,20 +163,39 @@ def render_visual_calendar(valid_sessions, selected_date):
 
 
 # =============================================================================
-# LOAD DATA
+# DATA LOADING
 # =============================================================================
-if not DB_PATH.exists():
-    st.error(f"Base introuvable : {DB_PATH}")
-    st.stop()
+@st.cache_data(show_spinner=False)
+def ensure_db_local():
+    if DB_PATH.exists():
+        return str(DB_PATH)
+
+    with requests.get(DB_URL, stream=True, timeout=300) as response:
+        response.raise_for_status()
+        with open(DB_PATH, "wb") as f:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+    return str(DB_PATH)
 
 
 @st.cache_data(show_spinner=False)
-def load_all(path):
-    return prepare_data(path)
+def load_all(path_str):
+    return prepare_data(path_str)
 
 
-with st.spinner("Loading data..."):
-    df, session_cmap = load_all(DB_PATH)
+try:
+    with st.spinner("Downloading database..."):
+        local_db_path = ensure_db_local()
+
+    with st.spinner("Loading data..."):
+        df, session_cmap = load_all(local_db_path)
+
+except Exception as e:
+    st.error("Impossible de charger la base de données.")
+    st.exception(e)
+    st.stop()
 
 if df.empty:
     st.error("La base est vide.")
@@ -185,6 +210,7 @@ latest_by_mouse = (
     .max()
     .sort_values()
 )
+
 default_mouse = latest_by_mouse.index[-1] if len(latest_by_mouse) > 0 else None
 
 mouse_options = sorted(df["Mouse_ID"].dropna().unique().tolist())
@@ -219,19 +245,17 @@ with st.sidebar:
         "Mouse",
         mouse_options,
         index=mouse_options.index(st.session_state.mouse_id),
-        key="sidebar_mouse"
+        key="sidebar_mouse",
     )
 
     selected_view = st.radio(
         "View",
         ["Overview", "Session focus"],
         index=0 if st.session_state.view_mode == "Overview" else 1,
-        key="sidebar_view"
+        key="sidebar_view",
     )
 
 mouse_changed = selected_mouse != st.session_state.mouse_id
-view_changed = selected_view != st.session_state.view_mode
-
 st.session_state.mouse_id = selected_mouse
 st.session_state.view_mode = selected_view
 
@@ -251,6 +275,7 @@ valid_sessions_for_state = (
     .drop_duplicates(subset=["Date_norm"], keep="last")
     .copy()
 )
+
 valid_dates_for_state = valid_sessions_for_state["Date_norm"].dt.date.tolist()
 
 if "selected_date" not in st.session_state:
@@ -264,13 +289,12 @@ if st.session_state.selected_date not in valid_dates_for_state and valid_dates_f
 
 st.title(f"🐭 {mouse_id}")
 
-# page placeholder pour éviter les résidus visuels d'une vue à l'autre
 page = st.empty()
 
 with page.container():
-    # =============================================================================
+    # =========================================================================
     # OVERVIEW
-    # =============================================================================
+    # =========================================================================
     if view_mode == "Overview":
         with st.spinner("Loading overview..."):
             render_metric_row([
@@ -290,7 +314,7 @@ with page.container():
                 session_cmap=session_cmap,
                 max_reward=7,
                 max_failure=30,
-                min_valid_bouts=100
+                min_valid_bouts=100,
             )
 
             if fig_strip is not None:
@@ -315,9 +339,9 @@ with page.container():
             if fig_reg is not None:
                 render_plot_card("Reward / failure regression + slope over time", fig_reg)
 
-    # =============================================================================
+    # =========================================================================
     # SESSION FOCUS
-    # =============================================================================
+    # =========================================================================
     else:
         valid_sessions = (
             df_mouse_v1
@@ -343,7 +367,7 @@ with page.container():
 
             render_visual_calendar(
                 valid_sessions=valid_sessions,
-                selected_date=current_selected_date
+                selected_date=current_selected_date,
             )
 
             st.markdown("")
@@ -355,7 +379,7 @@ with page.container():
                 "Session date",
                 options=date_options,
                 index=current_idx,
-                key="session_date_select"
+                key="session_date_select",
             )
 
             chosen_date = pd.to_datetime(chosen).date()
@@ -393,12 +417,13 @@ with page.container():
                 session=session,
                 mouse_id=mouse_id,
                 date_str=date_str,
-                reward_cut=DEFAULT_REWARD_CUT
+                reward_cut=DEFAULT_REWARD_CUT,
             )
+
             fig2 = build_session_plot_failure_distribution(
                 session=session,
                 failure_xlim=(0, DEFAULT_FAILURE_MAX),
-                reward_cut=DEFAULT_REWARD_CUT
+                reward_cut=DEFAULT_REWARD_CUT,
             )
 
             colA, colB = st.columns(2)

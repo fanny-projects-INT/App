@@ -30,7 +30,6 @@ plt.rcParams.update({
     "grid.alpha": 0.16,
 })
 
-# Palette unique, claire et cohérente partout
 YELLOW = "#F6E06E"
 BLUE = "#90C5FF"
 RED = "#F2A093"
@@ -53,21 +52,21 @@ COLORS = {
 }
 
 PROTOCOL_COLORS = {
-    1: (0.96, 0.88, 0.42),   # jaune
-    2: (0.56, 0.77, 1.00),   # bleu
-    3: (0.95, 0.63, 0.58),   # rouge
+    1: (0.96, 0.88, 0.42),
+    2: (0.56, 0.77, 1.00),
+    3: (0.95, 0.63, 0.58),
 }
 
 PROTOCOL_HEX = {
-    1: YELLOW,   # Training 1
-    2: BLUE,     # Training 2
-    3: RED,      # Task
+    1: YELLOW,
+    2: BLUE,
+    3: RED,
 }
 
 PROTOCOL_LABELS = {
     1: "Training 1",
     2: "Training 2",
-    3: "Task"
+    3: "Task",
 }
 
 
@@ -87,7 +86,14 @@ def ensure_list(x):
     return []
 
 
-def smooth_discrete_curve_fixed_range(x_vals, y_vals, x_min=1, x_max=25, sigma=1.0, points=900):
+def smooth_discrete_curve_fixed_range(
+    x_vals,
+    y_vals,
+    x_min=1,
+    x_max=25,
+    sigma=1.0,
+    points=900
+):
     x_vals = np.asarray(x_vals, dtype=float)
     y_vals = np.asarray(y_vals, dtype=float)
 
@@ -144,18 +150,23 @@ def get_protocol_blocks(df_session):
     start = None
     curr_p = None
     curr_proto = None
+
     for _, r in df_session.iterrows():
         s = r["SessionIndex"]
         p = r["Proba_val"]
         proto = r["Protocol"]
+
         if start is None:
             start, curr_p, curr_proto = s, p, proto
             continue
+
         if p != curr_p or proto != curr_proto:
             blocks.append((start, s - 1, curr_p, curr_proto))
             start, curr_p, curr_proto = s, p, proto
+
     if start is not None:
         blocks.append((start, df_session["SessionIndex"].max(), curr_p, curr_proto))
+
     return blocks
 
 
@@ -176,6 +187,7 @@ def prepare_data(path):
         "session_cmap",
         [PROTOCOL_HEX[2], PROTOCOL_HEX[3]]
     )
+
     return df, session_cmap
 
 
@@ -185,6 +197,7 @@ def prepare_data(path):
 def compute_failures(row):
     timestamps = row["Timestamps"]
     bouts = row["Bout for Timestamps"]
+
     if not isinstance(timestamps, np.ndarray) or len(timestamps) == 0:
         return []
     if not isinstance(bouts, np.ndarray) or len(bouts) == 0:
@@ -212,26 +225,32 @@ def compute_failures(row):
     for b in np.unique(bouts):
         mask = bouts == b
         t_in = timestamps[mask]
+
         if len(t_in) == 0:
             failures.append(0)
             continue
+
         r_in = [t for t in rewarded if t_in[0] <= t <= t_in[-1]]
         nr_in = [t for t in non_rewarded if t_in[0] <= t <= t_in[-1]]
+
         if len(nr_in) == 0:
             failures.append(0)
             continue
+
         if len(r_in) == 0:
             failures.append(len(nr_in))
         else:
             last_r = max(r_in)
             count = sum(1 for t in nr_in if t > last_r)
             failures.append(count)
+
     return failures
 
 
 def count_reward_per_bout(row):
     timestamps = row.get("Timestamps")
     bouts = row.get("Bout for Timestamps")
+
     if not isinstance(timestamps, np.ndarray) or len(timestamps) == 0:
         return []
 
@@ -248,11 +267,14 @@ def count_reward_per_bout(row):
     for b in np.unique(bouts):
         mask = bouts == b
         t_in = timestamps[mask]
+
         if len(t_in) == 0:
             counts.append(0)
             continue
+
         r_in = [t for t in rewarded if t_in[0] <= t <= t_in[-1]]
         counts.append(len(r_in))
+
     return counts
 
 
@@ -260,9 +282,10 @@ def count_licks(row, lick_type):
     column_map = {
         "rewarded": "Times Rewarded Licks",
         "non_rewarded": "Times Non Rewarded Licks",
-        "invalid": "Times Invalid Licks"
+        "invalid": "Times Invalid Licks",
     }
     column_name = column_map.get(lick_type)
+
     if not column_name:
         return 0
 
@@ -272,6 +295,7 @@ def count_licks(row, lick_type):
 
     if len(data) > 0 and isinstance(data[0], (list, np.ndarray)):
         return sum(len(x) for x in data)
+
     return len(data)
 
 
@@ -313,7 +337,7 @@ def plot_protocol_strip(df, mouse):
             ha="center",
             va="center",
             fontsize=9.5,
-            color=COLORS["navy"]
+            color=COLORS["navy"],
         )
         left += width
 
@@ -321,6 +345,7 @@ def plot_protocol_strip(df, mouse):
     ax.set_yticks([])
     ax.set_xticks([])
     ax.set_title(f"{mouse} — Session types", pad=8, color=COLORS["navy"])
+
     for spine in ax.spines.values():
         spine.set_visible(False)
 
@@ -357,7 +382,7 @@ def plot_bout_count_rewards(df, mouse):
         linewidth=2.0,
         color=COLORS["navy"],
         zorder=20,
-        label="Bouts"
+        label="Bouts",
     )
 
     ymin, ymax = ax.get_ylim()
@@ -373,7 +398,7 @@ def plot_bout_count_rewards(df, mouse):
         linewidth=1.9,
         color=COLORS["green"],
         zorder=25,
-        label="Rewarded licks"
+        label="Rewarded licks",
     )
 
     max_reward = df_session["RewardedCount"].max()
@@ -388,7 +413,7 @@ def plot_bout_count_rewards(df, mouse):
             ha="center",
             fontsize=8,
             color=COLORS["green"],
-            zorder=50
+            zorder=50,
         )
 
     for i, (start, end, p, proto) in enumerate(blocks):
@@ -402,7 +427,7 @@ def plot_bout_count_rewards(df, mouse):
                 ha="center",
                 va="top",
                 fontsize=8.5,
-                color=COLORS["gray"]
+                color=COLORS["gray"],
             )
 
     ax.set_xlabel("Training sessions", color=COLORS["navy"])
@@ -411,13 +436,17 @@ def plot_bout_count_rewards(df, mouse):
     ax.set_xticks(df_session["SessionIndex"])
     ax.grid(alpha=0.22, axis="y", color=COLORS["grid"])
 
-    ax.legend(handles=[
-        mpatches.Patch(color=PROTOCOL_HEX[1], label="Training 1"),
-        mpatches.Patch(color=PROTOCOL_HEX[2], label="Training 2"),
-        mpatches.Patch(color=PROTOCOL_HEX[3], label="Task"),
-        mlines.Line2D([], [], color=COLORS["navy"], marker="o", label="Bouts"),
-        mlines.Line2D([], [], color=COLORS["green"], marker="s", linestyle="--", label="Rewarded licks"),
-    ], loc="upper left", frameon=False)
+    ax.legend(
+        handles=[
+            mpatches.Patch(color=PROTOCOL_HEX[1], label="Training 1"),
+            mpatches.Patch(color=PROTOCOL_HEX[2], label="Training 2"),
+            mpatches.Patch(color=PROTOCOL_HEX[3], label="Task"),
+            mlines.Line2D([], [], color=COLORS["navy"], marker="o", label="Bouts"),
+            mlines.Line2D([], [], color=COLORS["green"], marker="s", linestyle="--", label="Rewarded licks"),
+        ],
+        loc="upper left",
+        frameon=False,
+    )
 
     fig.tight_layout()
     return fig
@@ -458,7 +487,7 @@ def plot_stacked_lick_counts(df, mouse):
         width=0.62,
         color=BLUE,
         label="Invalid",
-        zorder=40
+        zorder=40,
     )
 
     ymin, ymax = ax.get_ylim()
@@ -475,7 +504,7 @@ def plot_stacked_lick_counts(df, mouse):
                 ha="center",
                 va="top",
                 fontsize=8.5,
-                color=COLORS["gray"]
+                color=COLORS["gray"],
             )
 
     ax.set_ylim(ymin - yrange * 0.12, ymax)
@@ -488,12 +517,12 @@ def plot_stacked_lick_counts(df, mouse):
     lick_legend = [
         mpatches.Patch(color=YELLOW, label="Rewarded"),
         mpatches.Patch(color=RED, label="Non-rewarded"),
-        mpatches.Patch(color=BLUE, label="Invalid")
+        mpatches.Patch(color=BLUE, label="Invalid"),
     ]
     protocol_legend = [
         mpatches.Patch(color=PROTOCOL_HEX[1], label="Training 1"),
         mpatches.Patch(color=PROTOCOL_HEX[2], label="Training 2"),
-        mpatches.Patch(color=PROTOCOL_HEX[3], label="Task")
+        mpatches.Patch(color=PROTOCOL_HEX[3], label="Task"),
     ]
     ax.legend(handles=lick_legend + protocol_legend, loc="upper left", frameon=False)
 
@@ -527,7 +556,7 @@ def plot_histogram_kde_failures(df, mouse):
         color=BLUE,
         alpha=0.35,
         edgecolor=BLUE,
-        linewidth=1.0
+        linewidth=1.0,
     )
 
     if len(np.unique(all_failures)) > 1:
@@ -589,7 +618,13 @@ def plot_kde_failures_by_session(df, mouse, session_cmap, bandwidth_factor=0.8):
         kde.set_bandwidth(kde.factor * bandwidth_factor)
         ys = kde(xs)
         color = session_cmap(idx / max(1, n_sessions - 1))
-        ax.plot(xs, ys, linewidth=2.1, color=color, label=f"{date_val.strftime('%Y-%m-%d')}  (n={len(failures)})")
+        ax.plot(
+            xs,
+            ys,
+            linewidth=2.1,
+            color=color,
+            label=f"{date_val.strftime('%Y-%m-%d')}  (n={len(failures)})",
+        )
 
     ax.set_title(f"Mouse {mouse} — KDE of consecutive failures by task session", color=COLORS["navy"])
     ax.set_xlabel("Consecutive failures", color=COLORS["navy"])
@@ -668,7 +703,7 @@ def plot_regression_rewards_failures_and_slope(
             "n_cut": len(failures_cut),
             "slope": float(model.coef_[0]),
             "intercept": float(model.intercept_),
-            "mean_failures": float(np.mean(failures_cut))
+            "mean_failures": float(np.mean(failures_cut)),
         })
 
     if len(valid_sessions) == 0:
@@ -689,7 +724,7 @@ def plot_regression_rewards_failures_and_slope(
             y_line,
             color=color,
             linewidth=2.0,
-            label=f"{sess['date'].strftime('%Y-%m-%d')} (n={sess['n_base']}, cut={sess['n_cut']})"
+            label=f"{sess['date'].strftime('%Y-%m-%d')} (n={sess['n_base']}, cut={sess['n_cut']})",
         )
 
     ax_left.set_title(f"Mouse {mouse} — Reward vs failures", color=COLORS["navy"])
@@ -830,7 +865,12 @@ def build_session_plot_failure_distribution(session, failure_xlim=(0, 25), rewar
     ax.bar(all_x, p_emp, width=0.8, color=RED, edgecolor=RED, alpha=0.35, linewidth=1.0)
 
     x_smooth, y_smooth = smooth_discrete_curve_fixed_range(
-        all_x, p_emp, x_min=1, x_max=failure_xlim[1], sigma=1.0, points=900
+        all_x,
+        p_emp,
+        x_min=1,
+        x_max=failure_xlim[1],
+        sigma=1.0,
+        points=900,
     )
 
     ax.plot(x_smooth, y_smooth, color=RED, linewidth=2.4)
@@ -858,7 +898,11 @@ def month_to_label(year, month):
 
 
 def build_month_day_list(year, month):
-    return [d for d in calendar.Calendar(firstweekday=0).itermonthdates(year, month) if d.month == month]
+    return [
+        d
+        for d in calendar.Calendar(firstweekday=0).itermonthdates(year, month)
+        if d.month == month
+    ]
 
 
 def get_session_date_to_protocol(df_sessions):
