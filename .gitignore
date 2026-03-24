@@ -1,2 +1,5 @@
+database.duckdb
+*.duckdb
+conversiondb.py
 data/
 *.feather
