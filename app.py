@@ -1,5 +1,7 @@
 from pathlib import Path
 import zipfile
+import base64
+import mimetypes
 import requests
 import streamlit as st
 import pandas as pd
@@ -115,6 +117,31 @@ def inject_css():
             line-height: 1.2;
         }}
 
+        .plot-card {{
+            background: {WHITE};
+            border: 1px solid {CARD_BORDER};
+            border-radius: 16px;
+            padding: 14px 14px 10px 14px;
+            box-shadow: 0 1px 2px rgba(34,50,72,0.04);
+            margin-bottom: 12px;
+        }}
+
+        .plot-card-title {{
+            font-size: 0.96rem;
+            font-weight: 700;
+            color: {NAVY};
+            margin: 0 0 10px 0;
+            line-height: 1.2;
+        }}
+
+        .plot-card img {{
+            width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 10px;
+            background: white;
+        }}
+
         .stDataFrame {{
             border: 1px solid {CARD_BORDER};
             border-radius: 14px;
@@ -176,13 +203,6 @@ def abs_cache_path(cache_dir, rel):
     return Path(cache_dir) / rel
 
 
-def show_image(path):
-    if path and Path(path).exists():
-        st.image(str(path), use_container_width=True)
-    else:
-        st.info("Image not available.")
-
-
 # =============================================================================
 # UI HELPERS
 # =============================================================================
@@ -204,6 +224,36 @@ def section(title):
         <div class="section-wrap">
             <hr class="section-rule">
             <div class="section-title">{title}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def plot_card(title, path):
+    if not path or not Path(path).exists():
+        st.markdown(
+            f"""
+            <div class="plot-card">
+                <div class="plot-card-title">{title}</div>
+                <div class="small-muted">Image not available.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    image_path = Path(path)
+    mime_type = mimetypes.guess_type(str(image_path))[0] or "image/png"
+
+    with open(image_path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("utf-8")
+
+    st.markdown(
+        f"""
+        <div class="plot-card">
+            <div class="plot-card-title">{title}</div>
+            <img src="data:{mime_type};base64,{encoded}" />
         </div>
         """,
         unsafe_allow_html=True,
@@ -288,28 +338,27 @@ try:
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
         section("Session types")
-        show_image(abs_cache_path(cache_dir, row["protocol_strip_path"]))
+        plot_card("Protocol strip", abs_cache_path(cache_dir, row["protocol_strip_path"]))
 
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
         section("Training progression")
-        show_image(abs_cache_path(cache_dir, row["bout_count_rewards_path"]))
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-        show_image(abs_cache_path(cache_dir, row["stacked_lick_counts_path"]))
+        plot_card("Bout count and rewards", abs_cache_path(cache_dir, row["bout_count_rewards_path"]))
+        plot_card("Stacked lick counts", abs_cache_path(cache_dir, row["stacked_lick_counts_path"]))
 
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
         section("Failure distributions")
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2, gap="medium")
         with col1:
-            show_image(abs_cache_path(cache_dir, row["histogram_kde_failures_path"]))
+            plot_card("Histogram + KDE", abs_cache_path(cache_dir, row["histogram_kde_failures_path"]))
         with col2:
-            show_image(abs_cache_path(cache_dir, row["kde_failures_by_session_path"]))
+            plot_card("KDE by session", abs_cache_path(cache_dir, row["kde_failures_by_session_path"]))
 
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
         section("Regression")
-        show_image(abs_cache_path(cache_dir, row["regression_rewards_failures_and_slope_path"]))
+        plot_card("Rewards / failures regression", abs_cache_path(cache_dir, row["regression_rewards_failures_and_slope_path"]))
 
     # =========================================================================
     # SESSION FOCUS
@@ -353,11 +402,11 @@ try:
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
         section("Session plots")
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2, gap="medium")
         with col1:
-            show_image(abs_cache_path(cache_dir, row["session_rewards_vs_failures_path"]))
+            plot_card("Rewards vs failures", abs_cache_path(cache_dir, row["session_rewards_vs_failures_path"]))
         with col2:
-            show_image(abs_cache_path(cache_dir, row["session_failure_distribution_path"]))
+            plot_card("Failure distribution", abs_cache_path(cache_dir, row["session_failure_distribution_path"]))
 
 except Exception as e:
     st.error("App failed")
