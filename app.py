@@ -77,25 +77,6 @@ def inject_css():
             margin-bottom: 0.65rem;
         }}
 
-        .section-wrap {{
-            margin-top: 0.3rem;
-            margin-bottom: 0.9rem;
-        }}
-
-        .section-rule {{
-            border: none;
-            border-top: 1px solid {CARD_BORDER};
-            margin: 0 0 0.22rem 0;
-        }}
-
-        .section-title {{
-            font-size: 1.03rem;
-            font-weight: 700;
-            color: {NAVY};
-            margin: 0;
-            line-height: 1.2;
-        }}
-
         .metric-card {{
             background: {WHITE};
             border: 1px solid {CARD_BORDER};
@@ -117,21 +98,32 @@ def inject_css():
             line-height: 1.2;
         }}
 
+        .section-block {{
+            margin-top: 8px;
+            margin-bottom: 10px;
+        }}
+
+        .section-separator {{
+            border: none;
+            border-top: 1px solid {CARD_BORDER};
+            margin: 0 0 8px 0;
+        }}
+
+        .section-title {{
+            font-size: 0.98rem;
+            font-weight: 700;
+            color: {NAVY};
+            margin: 0;
+            line-height: 1.2;
+        }}
+
         .plot-card {{
             background: {WHITE};
             border: 1px solid {CARD_BORDER};
             border-radius: 16px;
-            padding: 14px 14px 10px 14px;
+            padding: 12px;
             box-shadow: 0 1px 2px rgba(34,50,72,0.04);
             margin-bottom: 12px;
-        }}
-
-        .plot-card-title {{
-            font-size: 0.96rem;
-            font-weight: 700;
-            color: {NAVY};
-            margin: 0 0 10px 0;
-            line-height: 1.2;
         }}
 
         .plot-card img {{
@@ -142,15 +134,15 @@ def inject_css():
             background: white;
         }}
 
+        .plot-empty {{
+            color: {MUTED};
+            font-size: 0.9rem;
+        }}
+
         .stDataFrame {{
             border: 1px solid {CARD_BORDER};
             border-radius: 14px;
             overflow: hidden;
-        }}
-
-        .small-muted {{
-            color: {MUTED};
-            font-size: 0.9rem;
         }}
         </style>
         """,
@@ -221,8 +213,8 @@ def metric_card(label, value):
 def section(title):
     st.markdown(
         f"""
-        <div class="section-wrap">
-            <hr class="section-rule">
+        <div class="section-block">
+            <hr class="section-separator">
             <div class="section-title">{title}</div>
         </div>
         """,
@@ -230,13 +222,12 @@ def section(title):
     )
 
 
-def plot_card(title, path):
+def plot_card(path):
     if not path or not Path(path).exists():
         st.markdown(
-            f"""
+            """
             <div class="plot-card">
-                <div class="plot-card-title">{title}</div>
-                <div class="small-muted">Image not available.</div>
+                <div class="plot-empty">Image not available.</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -252,7 +243,6 @@ def plot_card(title, path):
     st.markdown(
         f"""
         <div class="plot-card">
-            <div class="plot-card-title">{title}</div>
             <img src="data:{mime_type};base64,{encoded}" />
         </div>
         """,
@@ -337,28 +327,19 @@ try:
 
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-        section("Session types")
-        plot_card("Protocol strip", abs_cache_path(cache_dir, row["protocol_strip_path"]))
+        section("Plots")
 
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        plot_card(abs_cache_path(cache_dir, row["protocol_strip_path"]))
+        plot_card(abs_cache_path(cache_dir, row["bout_count_rewards_path"]))
+        plot_card(abs_cache_path(cache_dir, row["stacked_lick_counts_path"]))
 
-        section("Training progression")
-        plot_card("Bout count and rewards", abs_cache_path(cache_dir, row["bout_count_rewards_path"]))
-        plot_card("Stacked lick counts", abs_cache_path(cache_dir, row["stacked_lick_counts_path"]))
-
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-        section("Failure distributions")
         col1, col2 = st.columns(2, gap="medium")
         with col1:
-            plot_card("Histogram + KDE", abs_cache_path(cache_dir, row["histogram_kde_failures_path"]))
+            plot_card(abs_cache_path(cache_dir, row["histogram_kde_failures_path"]))
         with col2:
-            plot_card("KDE by session", abs_cache_path(cache_dir, row["kde_failures_by_session_path"]))
+            plot_card(abs_cache_path(cache_dir, row["kde_failures_by_session_path"]))
 
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-        section("Regression")
-        plot_card("Rewards / failures regression", abs_cache_path(cache_dir, row["regression_rewards_failures_and_slope_path"]))
+        plot_card(abs_cache_path(cache_dir, row["regression_rewards_failures_and_slope_path"]))
 
     # =========================================================================
     # SESSION FOCUS
@@ -399,14 +380,14 @@ try:
         with m4:
             metric_card("Number of Bouts", row["Number of Bouts"])
 
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-        section("Session plots")
+        section("Plots")
         col1, col2 = st.columns(2, gap="medium")
         with col1:
-            plot_card("Rewards vs failures", abs_cache_path(cache_dir, row["session_rewards_vs_failures_path"]))
+            plot_card(abs_cache_path(cache_dir, row["session_rewards_vs_failures_path"]))
         with col2:
-            plot_card("Failure distribution", abs_cache_path(cache_dir, row["session_failure_distribution_path"]))
+            plot_card(abs_cache_path(cache_dir, row["session_failure_distribution_path"]))
 
 except Exception as e:
     st.error("App failed")
