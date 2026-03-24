@@ -1,14 +1,24 @@
 import streamlit as st
-import sys
+import requests
 
-st.set_page_config(page_title="Test App", layout="wide")
+st.set_page_config(page_title="Test DB URL", layout="wide")
 
-st.title("✅ App minimale OK")
+DB_URL = "https://github.com/fanny-projects-INT/App/releases/latest/download/full_db_all_rigs.feather"
 
-st.write("Si tu vois ça, le déploiement Streamlit fonctionne.")
+st.title("Test accès DB")
 
-st.subheader("Infos debug")
+st.write("URL:", DB_URL)
 
-st.write("Python version:", sys.version)
+try:
+    response = requests.get(DB_URL, stream=True, timeout=60)
+    st.write("Status code:", response.status_code)
+    st.write("Content-Type:", response.headers.get("content-type"))
+    st.write("Content-Length:", response.headers.get("content-length"))
 
-st.write("Streamlit fonctionne correctement 🎉")
+    if response.status_code == 200:
+        st.success("Le fichier est accessible depuis Streamlit Cloud.")
+    else:
+        st.error("Le fichier n'est pas accessible correctement.")
+
+except Exception as e:
+    st.exception(e)
