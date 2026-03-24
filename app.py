@@ -56,10 +56,27 @@ def ensure_cache_local():
 def load_metadata(cache_dir: str):
     path = Path(cache_dir) / "metadata.parquet"
     df = pd.read_parquet(path).copy()
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df["Date_norm"] = pd.to_datetime(df["Date_norm"], errors="coerce")
-    df["Mouse_ID"] = df["Mouse_ID"].astype(str)
-    df["Version"] = df["Version"].astype(str)
+
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    else:
+        df["Date"] = pd.NaT
+
+    if "Date_norm" in df.columns:
+        df["Date_norm"] = pd.to_datetime(df["Date_norm"], errors="coerce")
+    else:
+        df["Date_norm"] = df["Date"].dt.normalize()
+
+    if "Mouse_ID" in df.columns:
+        df["Mouse_ID"] = df["Mouse_ID"].astype(str)
+    else:
+        df["Mouse_ID"] = ""
+
+    if "Version" in df.columns:
+        df["Version"] = df["Version"].astype(str)
+    else:
+        df["Version"] = ""
+
     return df.sort_values(["Mouse_ID", "Date", "Version"]).reset_index(drop=True)
 
 
