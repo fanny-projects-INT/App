@@ -1,7 +1,5 @@
 from pathlib import Path
 import zipfile
-import base64
-import mimetypes
 import requests
 import streamlit as st
 import pandas as pd
@@ -117,32 +115,15 @@ def inject_css():
             line-height: 1.2;
         }}
 
-        .plot-card {{
-            background: {WHITE};
-            border: 1px solid {CARD_BORDER};
-            border-radius: 16px;
-            padding: 12px;
-            box-shadow: 0 1px 2px rgba(34,50,72,0.04);
-            margin-bottom: 12px;
-        }}
-
-        .plot-card img {{
-            width: 100%;
-            height: auto;
-            display: block;
-            border-radius: 10px;
-            background: white;
-        }}
-
-        .plot-empty {{
-            color: {MUTED};
-            font-size: 0.9rem;
-        }}
-
         .stDataFrame {{
             border: 1px solid {CARD_BORDER};
             border-radius: 14px;
             overflow: hidden;
+        }}
+
+        .small-muted {{
+            color: {MUTED};
+            font-size: 0.9rem;
         }}
         </style>
         """,
@@ -223,31 +204,16 @@ def section(title):
 
 
 def plot_card(path):
-    if not path or not Path(path).exists():
-        st.markdown(
-            """
-            <div class="plot-card">
-                <div class="plot-empty">Image not available.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        return
+    with st.container(border=True):
+        if path and Path(path).exists():
+            st.image(str(path), use_container_width=True)
+        else:
+            st.caption("Image not available.")
 
-    image_path = Path(path)
-    mime_type = mimetypes.guess_type(str(image_path))[0] or "image/png"
 
-    with open(image_path, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode("utf-8")
-
-    st.markdown(
-        f"""
-        <div class="plot-card">
-            <img src="data:{mime_type};base64,{encoded}" />
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def dataframe_card(dataframe):
+    with st.container(border=True):
+        st.dataframe(dataframe, use_container_width=True, hide_index=True)
 
 
 # =============================================================================
@@ -323,12 +289,11 @@ try:
                 "Number of Rewarded Licks",
             ] if c in df_mouse.columns
         ]
-        st.dataframe(df_mouse[show_cols], use_container_width=True, hide_index=True)
+        dataframe_card(df_mouse[show_cols])
 
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
         section("Plots")
-
         plot_card(abs_cache_path(cache_dir, row["protocol_strip_path"]))
         plot_card(abs_cache_path(cache_dir, row["bout_count_rewards_path"]))
         plot_card(abs_cache_path(cache_dir, row["stacked_lick_counts_path"]))
