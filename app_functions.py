@@ -1,6 +1,7 @@
 import ast
 import colorsys
 import calendar
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -84,6 +85,41 @@ def ensure_list(x):
         except Exception:
             return []
     return []
+
+
+def ensure_array(x):
+    if isinstance(x, np.ndarray):
+        return x
+    if isinstance(x, list):
+        try:
+            return np.asarray(x)
+        except Exception:
+            return np.array([], dtype=float)
+    if isinstance(x, str):
+        try:
+            val = ast.literal_eval(x)
+            return np.asarray(val)
+        except Exception:
+            return np.array([], dtype=float)
+    return np.array([], dtype=float)
+
+
+def flatten_nested_times(x):
+    arr = ensure_array(x)
+
+    if arr.size == 0:
+        return []
+
+    if len(arr) > 0 and isinstance(arr[0], (list, np.ndarray)):
+        out = []
+        for block in arr:
+            if isinstance(block, np.ndarray):
+                out.extend(block.tolist())
+            else:
+                out.extend(list(block))
+        return out
+
+    return arr.tolist()
 
 
 def smooth_discrete_curve_fixed_range(
@@ -170,18 +206,15 @@ def get_protocol_blocks(df_session):
     return blocks
 
 
-# =============================================================================
-# DATA PREP
-# =============================================================================
-def prepare_data(path):
-    df = pd.read_feather(path).copy()
+def prepare_mouse_dataframe(df):
+    df = df.copy()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Date_norm"] = df["Date"].dt.normalize()
     df["Mouse_ID"] = df["Mouse_ID"].astype(str)
     df["Version"] = df["Version"].astype(str)
     df["Protocol"] = pd.to_numeric(df["Protocol"], errors="coerce").astype("Int64")
     df["Proba_val"] = df["Probas"].apply(parse_proba)
-    df = df.sort_values(["Mouse_ID", "Date"])
+    df = df.sort_values(["Mouse_ID", "Date", "Version"]).reset_index(drop=True)
 
     session_cmap = LinearSegmentedColormap.from_list(
         "session_cmap",
@@ -195,31 +228,14 @@ def prepare_data(path):
 # CORE ANALYSIS
 # =============================================================================
 def compute_failures(row):
-    timestamps = row["Timestamps"]
-    bouts = row["Bout for Timestamps"]
+    timestamps = ensure_array(row.get("Timestamps"))
+    bouts = ensure_array(row.get("Bout for Timestamps"))
 
-    if not isinstance(timestamps, np.ndarray) or len(timestamps) == 0:
-        return []
-    if not isinstance(bouts, np.ndarray) or len(bouts) == 0:
+    if len(timestamps) == 0 or len(bouts) == 0:
         return []
 
-    rewarded = []
-    rw = row.get("Times Rewarded Licks", [])
-    if isinstance(rw, np.ndarray) and len(rw) > 0:
-        if isinstance(rw[0], (list, np.ndarray)):
-            for block in rw:
-                rewarded.extend(block.tolist())
-        else:
-            rewarded = rw.tolist()
-
-    non_rewarded = []
-    nra = row.get("Times Non Rewarded Licks", [])
-    if isinstance(nra, np.ndarray) and len(nra) > 0:
-        if isinstance(nra[0], (list, np.ndarray)):
-            for block in nra:
-                non_rewarded.extend(block.tolist())
-        else:
-            non_rewarded = nra.tolist()
+    rewarded = flatten_nested_times(row.get("Times Rewarded Licks", []))
+    non_rewarded = flatten_nested_times(row.get("Times Non Rewarded Licks", []))
 
     failures = []
     for b in np.unique(bouts):
@@ -248,20 +264,13 @@ def compute_failures(row):
 
 
 def count_reward_per_bout(row):
-    timestamps = row.get("Timestamps")
-    bouts = row.get("Bout for Timestamps")
+    timestamps = ensure_array(row.get("Timestamps"))
+    bouts = ensure_array(row.get("Bout for Timestamps"))
 
-    if not isinstance(timestamps, np.ndarray) or len(timestamps) == 0:
+    if len(timestamps) == 0 or len(bouts) == 0:
         return []
 
-    rewarded = []
-    rw = row.get("Times Rewarded Licks", [])
-    if isinstance(rw, np.ndarray) and len(rw) > 0:
-        if isinstance(rw[0], (list, np.ndarray)):
-            for block in rw:
-                rewarded.extend(block if not isinstance(block, np.ndarray) else block.tolist())
-        else:
-            rewarded = rw.tolist()
+    rewarded = flatten_nested_times(row.get("Times Rewarded Licks", []))
 
     counts = []
     for b in np.unique(bouts):
@@ -289,8 +298,8 @@ def count_licks(row, lick_type):
     if not column_name:
         return 0
 
-    data = row.get(column_name)
-    if not isinstance(data, np.ndarray) or len(data) == 0:
+    data = ensure_array(row.get(column_name))
+    if len(data) == 0:
         return 0
 
     if len(data) > 0 and isinstance(data[0], (list, np.ndarray)):
@@ -344,7 +353,7 @@ def plot_protocol_strip(df, mouse):
     ax.set_xlim(0, total)
     ax.set_yticks([])
     ax.set_xticks([])
-    ax.set_title(f"{mouse} — Session types", pad=8, color=COLORS["navy"])
+    ax.set_title(f"{mouse} - Session types", pad=8, color=COLORS["navy"])
 
     for spine in ax.spines.values():
         spine.set_visible(False)
@@ -432,7 +441,7 @@ def plot_bout_count_rewards(df, mouse):
 
     ax.set_xlabel("Training sessions", color=COLORS["navy"])
     ax.set_ylabel("Counts", color=COLORS["navy"])
-    ax.set_title(f"Mouse {mouse} — Bout count + rewarded licks", color=COLORS["navy"])
+    ax.set_title(f"Mouse {mouse} - Bout count + rewarded licks", color=COLORS["navy"])
     ax.set_xticks(df_session["SessionIndex"])
     ax.grid(alpha=0.22, axis="y", color=COLORS["grid"])
 
@@ -508,7 +517,7 @@ def plot_stacked_lick_counts(df, mouse):
             )
 
     ax.set_ylim(ymin - yrange * 0.12, ymax)
-    ax.set_title(f"Mouse {mouse} — Lick counts per session", color=COLORS["navy"])
+    ax.set_title(f"Mouse {mouse} - Lick counts per session", color=COLORS["navy"])
     ax.set_xlabel("Training sessions", color=COLORS["navy"])
     ax.set_ylabel("Total licks", color=COLORS["navy"])
     ax.set_xticks(x)
@@ -565,7 +574,7 @@ def plot_histogram_kde_failures(df, mouse):
         ys = kde(xs)
         ax.plot(xs, ys, color=BLUE, lw=2.3)
 
-    ax.set_title(f"Mouse {mouse} — Distribution of consecutive failures", color=COLORS["navy"])
+    ax.set_title(f"Mouse {mouse} - Distribution of consecutive failures", color=COLORS["navy"])
     ax.set_xlabel("Consecutive failures", color=COLORS["navy"])
     ax.set_ylabel("Density", color=COLORS["navy"])
     ax.set_xlim(0, max_x)
@@ -593,7 +602,7 @@ def plot_kde_failures_by_session(df, mouse, session_cmap, bandwidth_factor=0.8):
     valid_sessions = []
     for _, row in df_session.iterrows():
         failures = np.array(compute_failures(row), dtype=float)
-        valid_bouts = np.asarray(row["Correct Bouts"], dtype=bool)
+        valid_bouts = ensure_array(row.get("Correct Bouts")).astype(bool)
 
         if len(valid_bouts) == len(failures):
             failures = failures[valid_bouts]
@@ -623,10 +632,10 @@ def plot_kde_failures_by_session(df, mouse, session_cmap, bandwidth_factor=0.8):
             ys,
             linewidth=2.1,
             color=color,
-            label=f"{date_val.strftime('%Y-%m-%d')}  (n={len(failures)})",
+            label=f"{date_val.strftime('%Y-%m-%d')} (n={len(failures)})",
         )
 
-    ax.set_title(f"Mouse {mouse} — KDE of consecutive failures by task session", color=COLORS["navy"])
+    ax.set_title(f"Mouse {mouse} - KDE of consecutive failures by task session", color=COLORS["navy"])
     ax.set_xlabel("Consecutive failures", color=COLORS["navy"])
     ax.set_ylabel("Density", color=COLORS["navy"])
     ax.set_xlim(0, 30)
@@ -661,7 +670,7 @@ def plot_regression_rewards_failures_and_slope(
     for _, row in df_session.iterrows():
         failures = np.asarray(compute_failures(row), dtype=float)
         rewards = np.asarray(count_reward_per_bout(row), dtype=float)
-        valid_bouts = np.asarray(row["Correct Bouts"], dtype=bool)
+        valid_bouts = ensure_array(row.get("Correct Bouts")).astype(bool)
 
         n = min(len(failures), len(rewards), len(valid_bouts))
         failures = failures[:n]
@@ -727,7 +736,7 @@ def plot_regression_rewards_failures_and_slope(
             label=f"{sess['date'].strftime('%Y-%m-%d')} (n={sess['n_base']}, cut={sess['n_cut']})",
         )
 
-    ax_left.set_title(f"Mouse {mouse} — Reward vs failures", color=COLORS["navy"])
+    ax_left.set_title(f"Mouse {mouse} - Reward vs failures", color=COLORS["navy"])
     ax_left.set_xlabel("Reward count", color=COLORS["navy"])
     ax_left.set_ylabel("Consecutive failures", color=COLORS["navy"])
     ax_left.set_xlim(1, max_reward)
@@ -781,7 +790,7 @@ def plot_regression_rewards_failures_and_slope(
 def prepare_session_arrays(session, reward_cut=7):
     rewards = np.asarray(ensure_list(session["Rewards"]), dtype=float)
     failures = np.asarray(ensure_list(session["Licks After"]), dtype=float)
-    valid_bouts = np.asarray(session["Correct Bouts"], dtype=bool)
+    valid_bouts = np.asarray(ensure_list(session["Correct Bouts"]), dtype=bool)
 
     n = min(len(rewards), len(failures), len(valid_bouts))
     rewards = rewards[:n]
@@ -912,3 +921,9 @@ def get_session_date_to_protocol(df_sessions):
         proto = row["Protocol"]
         out[d] = int(proto) if pd.notna(proto) else None
     return out
+
+
+def save_figure(fig, path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)

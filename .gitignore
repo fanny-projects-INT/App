@@ -1,5 +1,43 @@
-database.duckdb
-*.duckdb
-conversiondb.py
+# =========================
+# DATA (très important)
+# =========================
 data/
+app/data/
+app_cache/
+
+*.duckdb
 *.feather
+*.parquet
+*.zip
+
+# =========================
+# BUILD / SCRIPTS TEMP
+# =========================
+conversiondb.py
+rebuild_duckdb.py
+
+# =========================
+# PYTHON
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# ENV
+# =========================
+.env
+.venv/
+venv/
+
+# =========================
+# STREAMLIT
+# =========================
+.streamlit/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db

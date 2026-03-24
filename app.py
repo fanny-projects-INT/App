@@ -1,145 +1,167 @@
 from pathlib import Path
+import zipfile
 import requests
-import duckdb
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="DuckDB light test", layout="wide")
+st.set_page_config(page_title="Behavior dashboard", layout="wide")
 
-DB_URL = "https://github.com/fanny-projects-INT/App/releases/latest/download/database.duckdb"
-DATA_DIR = Path(__file__).resolve().parent / "data"
+CACHE_URL = "https://github.com/fanny-projects-INT/App/releases/latest/download/app_cache.zip"
+
+APP_DIR = Path(__file__).resolve().parent
+DATA_DIR = APP_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
-DB_PATH = DATA_DIR / "database.duckdb"
+
+CACHE_ZIP = DATA_DIR / "app_cache.zip"
+CACHE_DIR = DATA_DIR / "app_cache"
+META_PATH = CACHE_DIR / "metadata.parquet"
+
+
+YELLOW = "#F6E06E"
+BLUE = "#90C5FF"
+RED = "#F2A093"
+
+PROTOCOL_HEX = {
+    1: YELLOW,
+    2: BLUE,
+    3: RED,
+}
+
+PROTOCOL_LABELS = {
+    1: "Training 1",
+    2: "Training 2",
+    3: "Task",
+}
 
 
 @st.cache_data(show_spinner=False)
-def ensure_db_local():
-    if DB_PATH.exists():
-        return str(DB_PATH)
+def ensure_cache_local():
+    if META_PATH.exists():
+        return str(CACHE_DIR)
 
-    with requests.get(DB_URL, stream=True, timeout=300) as response:
+    with requests.get(CACHE_URL, stream=True, timeout=300) as response:
         response.raise_for_status()
-        with open(DB_PATH, "wb") as f:
+        with open(CACHE_ZIP, "wb") as f:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
                 if chunk:
                     f.write(chunk)
 
-    return str(DB_PATH)
+    with zipfile.ZipFile(CACHE_ZIP, "r") as zf:
+        zf.extractall(CACHE_DIR)
 
-
-def connect_db(db_path: str):
-    con = duckdb.connect(db_path, read_only=True)
-    con.execute("SET threads=1")
-    con.execute("SET preserve_insertion_order=false")
-    return con
+    return str(CACHE_DIR)
 
 
 @st.cache_data(show_spinner=False)
-def get_mouse_list(db_path: str):
-    con = connect_db(db_path)
-    rows = con.execute("""
-        SELECT DISTINCT Mouse_ID
-        FROM data
-        ORDER BY Mouse_ID
-    """).fetchall()
-    con.close()
-    return [r[0] for r in rows]
+def load_metadata(cache_dir: str):
+    path = Path(cache_dir) / "metadata.parquet"
+    df = pd.read_parquet(path).copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df["Date_norm"] = pd.to_datetime(df["Date_norm"], errors="coerce")
+    df["Mouse_ID"] = df["Mouse_ID"].astype(str)
+    df["Version"] = df["Version"].astype(str)
+    return df.sort_values(["Mouse_ID", "Date", "Version"]).reset_index(drop=True)
 
 
-@st.cache_data(show_spinner=False)
-def load_mouse_light(db_path: str, mouse_id: str):
-    con = connect_db(db_path)
-
-    # Colonnes "légères" seulement
-    df = con.execute("""
-        SELECT
-            Mouse_ID,
-            Date,
-            Version,
-            Protocol,
-            Probas,
-            "Number of Bouts",
-            "Number of Rewarded Licks",
-            Rewards,
-            "Licks After",
-            "Correct Bouts"
-        FROM data
-        WHERE Mouse_ID = ?
-        ORDER BY Date
-    """, [mouse_id]).df()
-
-    con.close()
-    return df
+def abs_cache_path(cache_dir: str, rel_path: str | None):
+    if not rel_path:
+        return None
+    return Path(cache_dir) / Path(rel_path)
 
 
-@st.cache_data(show_spinner=False)
-def load_one_session_heavy(db_path: str, mouse_id: str, date_str: str, version: str = "1"):
-    con = connect_db(db_path)
-
-    # Colonnes lourdes seulement pour UNE session
-    df = con.execute("""
-        SELECT
-            Mouse_ID,
-            Date,
-            Version,
-            Protocol,
-            Probas,
-            Rewards,
-            "Licks After",
-            "Correct Bouts",
-            Timestamps,
-            "Bout for Timestamps",
-            "Times Rewarded Licks",
-            "Times Non Rewarded Licks",
-            "Times Invalid Licks"
-        FROM data
-        WHERE Mouse_ID = ?
-          AND CAST(Date AS DATE) = CAST(? AS DATE)
-          AND Version = ?
-        LIMIT 1
-    """, [mouse_id, date_str, version]).df()
-
-    con.close()
-    return df
+def image_exists(path):
+    return path is not None and Path(path).exists()
 
 
-st.title("DuckDB light test")
+def show_image_if_exists(path, caption=None):
+    if image_exists(path):
+        st.image(str(path), caption=caption, use_container_width=True)
+    else:
+        st.info("Image not available.")
+
+
+st.title("Behavior dashboard")
 
 try:
-    with st.spinner("Downloading DB..."):
-        local_db_path = ensure_db_local()
+    with st.spinner("Loading precomputed cache..."):
+        local_cache_dir = ensure_cache_local()
+        df = load_metadata(local_cache_dir)
 
-    st.success("DB available")
-    st.write("Size (MB):", round(Path(local_db_path).stat().st_size / (1024 * 1024), 2))
+    st.success("Cache loaded")
+    st.write("Sessions:", len(df))
+    st.write("Mice found:", df["Mouse_ID"].nunique())
 
-    mouse_options = get_mouse_list(local_db_path)
-    st.write("Mice found:", len(mouse_options))
-
+    mouse_options = sorted(df["Mouse_ID"].dropna().unique().tolist())
     mouse_id = st.selectbox("Choose mouse", mouse_options)
 
-    with st.spinner("Loading light mouse data..."):
-        df_light = load_mouse_light(local_db_path, mouse_id)
+    df_mouse = df[df["Mouse_ID"] == mouse_id].copy()
 
-    st.success("Light mouse data loaded")
-    st.write("Shape:", df_light.shape)
-    st.dataframe(df_light.head())
+    st.subheader("Session table")
+    st.dataframe(
+        df_mouse[[
+            "Date",
+            "Version",
+            "Protocol",
+            "Probas",
+            "Number of Bouts",
+            "Number of Rewarded Licks",
+        ]],
+        use_container_width=True,
+        hide_index=True,
+    )
 
-    if "Date" in df_light.columns:
-        df_light["Date"] = pd.to_datetime(df_light["Date"], errors="coerce")
-        valid_dates = sorted(df_light["Date"].dt.date.dropna().astype(str).unique().tolist())
-    else:
-        valid_dates = []
+    st.subheader("Overview")
 
-    if valid_dates:
-        selected_date = st.selectbox("Choose session date", valid_dates)
+    if not df_mouse.empty:
+        first_row = df_mouse.iloc[0]
 
-        with st.spinner("Loading one heavy session..."):
-            df_session = load_one_session_heavy(local_db_path, mouse_id, selected_date, "1")
+        col1, col2 = st.columns(2)
+        with col1:
+            show_image_if_exists(abs_cache_path(local_cache_dir, first_row.get("protocol_strip_path")))
+            show_image_if_exists(abs_cache_path(local_cache_dir, first_row.get("stacked_lick_counts_path")))
+            show_image_if_exists(abs_cache_path(local_cache_dir, first_row.get("kde_failures_by_session_path")))
+        with col2:
+            show_image_if_exists(abs_cache_path(local_cache_dir, first_row.get("bout_count_rewards_path")))
+            show_image_if_exists(abs_cache_path(local_cache_dir, first_row.get("histogram_kde_failures_path")))
+            show_image_if_exists(abs_cache_path(local_cache_dir, first_row.get("regression_rewards_failures_and_slope_path")))
 
-        st.success("Heavy session loaded")
-        st.write("Shape:", df_session.shape)
-        st.dataframe(df_session.head())
+    st.subheader("Session focus")
+
+    df_mouse["date_str"] = df_mouse["Date"].dt.strftime("%Y-%m-%d")
+    df_mouse["session_label"] = (
+        df_mouse["date_str"]
+        + " - v"
+        + df_mouse["Version"].astype(str)
+        + " - "
+        + df_mouse["Protocol"].fillna(-1).astype(int).map(PROTOCOL_LABELS).fillna("Protocol")
+    )
+
+    session_label = st.selectbox("Choose session", df_mouse["session_label"].tolist())
+    row = df_mouse[df_mouse["session_label"] == session_label].iloc[0]
+
+    st.markdown(
+        f"""
+        **Date:** {row['date_str']}  
+        **Version:** {row['Version']}  
+        **Protocol:** {PROTOCOL_LABELS.get(int(row['Protocol']), str(row['Protocol'])) if pd.notna(row['Protocol']) else '-'}  
+        **Probas:** {row['Probas']}  
+        **Number of Bouts:** {row['Number of Bouts']}  
+        **Number of Rewarded Licks:** {row['Number of Rewarded Licks']}
+        """
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        show_image_if_exists(
+            abs_cache_path(local_cache_dir, row.get("session_rewards_vs_failures_path")),
+            caption="Rewards vs failures",
+        )
+    with col2:
+        show_image_if_exists(
+            abs_cache_path(local_cache_dir, row.get("session_failure_distribution_path")),
+            caption="Failure distribution",
+        )
 
 except Exception as e:
-    st.error("Test failed")
+    st.error("App failed")
     st.exception(e)
