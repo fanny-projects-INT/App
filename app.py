@@ -64,12 +64,23 @@ def inject_css():
         }}
 
         .sidebar-title {{
-            font-size: 1.02rem;
-            font-weight: 700;
-            color: {DARK_GRAY};
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: {NAVY};
+            text-align: center;
+            margin: 0 0 1.4rem 0;
+            letter-spacing: 0.4px;
             line-height: 1.2;
-            margin: 0 0 0.35rem 0;
-            text-align: left;
+        }}
+
+        .sidebar-title::after {{
+            content: "";
+            display: block;
+            width: 42px;
+            height: 3px;
+            background: #2563EB;
+            margin: 8px auto 0 auto;
+            border-radius: 2px;
         }}
 
         .page-title {{
@@ -172,7 +183,6 @@ def load_metadata(cache_dir: str):
     df["Version"] = df.get("Version", "").astype(str)
     df["Protocol"] = pd.to_numeric(df.get("Protocol"), errors="coerce")
 
-    # Harmonisation valid bouts
     if "Number of Valid Bouts" in df.columns:
         df["Valid Bouts"] = df["Number of Valid Bouts"]
     elif "Valid Bouts" not in df.columns:
@@ -393,7 +403,6 @@ try:
 
         section("Plots")
 
-        # Nouveau plot au-dessus
         plot_card(abs_cache_path(cache_dir, row.get("session_bout_timeline_path")))
 
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
