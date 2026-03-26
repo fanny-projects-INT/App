@@ -28,6 +28,7 @@ CARD_BORDER = "#E3EAF2"
 PAGE_BG = "#F7FAFC"
 MUTED = "#748091"
 WHITE = "#FFFFFF"
+DARK_GRAY = "#3A4758"
 
 PROTOCOL_LABELS = {
     1: "Training 1",
@@ -54,7 +55,7 @@ def inject_css():
 
         .block-container {{
             max-width: 1460px;
-            padding-top: 0.55rem;
+            padding-top: 0.70rem;
             padding-bottom: 1.25rem;
         }}
 
@@ -63,11 +64,20 @@ def inject_css():
         }}
 
         .sidebar-title {{
-            font-size: 1.2rem;
+            font-size: 1.02rem;
+            font-weight: 700;
+            color: {DARK_GRAY};
+            line-height: 1.2;
+            margin: 0 0 0.35rem 0;
+            text-align: left;
+        }}
+
+        .page-title {{
+            font-size: 1.95rem;
             font-weight: 700;
             color: {NAVY};
-            line-height: 1.2;
-            margin-bottom: 0.25rem;
+            line-height: 1.15;
+            margin: 0;
         }}
 
         .metric-card {{
@@ -263,7 +273,7 @@ try:
     default_mouse_index = mouse_options.index(default_mouse) if default_mouse in mouse_options else 0
 
     with st.sidebar:
-        st.markdown('<div class="sidebar-title">🐭 Behavior dashboard</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-title">Behavior dashboard</div>', unsafe_allow_html=True)
 
         mouse_id = st.selectbox(
             "Mouse",
@@ -278,6 +288,12 @@ try:
         st.markdown("---")
         st.caption(f"Sessions: {len(df_mouse)}")
         st.caption(f"Mice: {df['Mouse_ID'].nunique()}")
+
+    st.markdown(
+        f'<div class="page-title">{view_mode}</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns(3)
     with c1:
