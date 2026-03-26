@@ -167,6 +167,12 @@ def load_metadata(cache_dir: str):
     df["Version"] = df.get("Version", "").astype(str)
     df["Protocol"] = pd.to_numeric(df.get("Protocol"), errors="coerce")
 
+    if "Valid Bouts" not in df.columns:
+        if "Number of Bouts" in df.columns:
+            df["Valid Bouts"] = df["Number of Bouts"]
+        else:
+            df["Valid Bouts"] = pd.NA
+
     return df.sort_values(["Mouse_ID", "Date", "Version"]).reset_index(drop=True)
 
 
@@ -285,7 +291,7 @@ try:
                 "Version",
                 "Protocol",
                 "Probas",
-                "Number of Bouts",
+                "Valid Bouts",
                 "Number of Rewarded Licks",
             ] if c in df_mouse.columns
         ]
@@ -343,7 +349,7 @@ try:
         with m3:
             metric_card("Probas", row["Probas"])
         with m4:
-            metric_card("Number of Bouts", row["Number of Bouts"])
+            metric_card("Valid Bouts", row["Valid Bouts"])
 
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
