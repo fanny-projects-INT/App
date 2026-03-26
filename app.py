@@ -172,7 +172,10 @@ def load_metadata(cache_dir: str):
     df["Version"] = df.get("Version", "").astype(str)
     df["Protocol"] = pd.to_numeric(df.get("Protocol"), errors="coerce")
 
-    if "Valid Bouts" not in df.columns:
+    # Harmonisation valid bouts
+    if "Number of Valid Bouts" in df.columns:
+        df["Valid Bouts"] = df["Number of Valid Bouts"]
+    elif "Valid Bouts" not in df.columns:
         if "Number of Bouts" in df.columns:
             df["Valid Bouts"] = df["Number of Bouts"]
         else:
@@ -389,6 +392,12 @@ try:
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
         section("Plots")
+
+        # Nouveau plot au-dessus
+        plot_card(abs_cache_path(cache_dir, row.get("session_bout_timeline_path")))
+
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
         col1, col2 = st.columns(2, gap="medium")
         with col1:
             plot_card(abs_cache_path(cache_dir, row["session_rewards_vs_failures_path"]))

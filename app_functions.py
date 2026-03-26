@@ -1139,3 +1139,216 @@ def save_figure(fig, path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
+
+
+# =============================================================================
+# SESSION FOCUS - BOUT TIMELINE
+# =============================================================================
+def extract_bout_timeline_data(session):
+    timestamps = ensure_array(session.get("Timestamps")).astype(float)
+    bouts = ensure_array(session.get("Bout for Timestamps"))
+
+    rewarded = flatten_nested_times(session.get("Times Rewarded Licks", []))
+    non_rewarded = flatten_nested_times(session.get("Times Non Rewarded Licks", []))
+
+    if "Manual Reward Bouts" in session.index:
+        manual_bouts = set(ensure_array(session.get("Manual Reward Bouts")).tolist())
+    else:
+        manual_bouts = set()
+
+    if "Correct Bouts" in session.index:
+        correct_bouts = ensure_array(session.get("Correct Bouts")).astype(bool)
+    else:
+        correct_bouts = np.array([], dtype=bool)
+
+    if len(timestamps) == 0 or len(bouts) == 0:
+        return None
+
+    n = min(len(timestamps), len(bouts))
+    timestamps = timestamps[:n]
+    bouts = bouts[:n]
+
+    unique_bouts = np.unique(bouts)
+    unique_bouts_sorted = np.sort(unique_bouts)
+
+    rows = []
+    for i, b in enumerate(unique_bouts_sorted):
+        mask = bouts == b
+        t = timestamps[mask]
+
+        if len(t) == 0:
+            continue
+
+        t_start = float(np.min(t))
+        t_end = float(np.max(t))
+        duration = max(t_end - t_start, 1e-6)
+
+        r = sum(t_start <= x <= t_end for x in rewarded)
+        nr = sum(t_start <= x <= t_end for x in non_rewarded)
+        m = 1 if b in manual_bouts else 0
+
+        if len(correct_bouts) > i:
+            is_valid = bool(correct_bouts[i])
+        else:
+            is_valid = True
+
+        rows.append((b, t_start, t_end, duration, r, nr, m, is_valid))
+
+    if not rows:
+        return None
+
+    arr = np.array(rows, dtype=object)
+    return {
+        "bout_id": arr[:, 0],
+        "t_start": arr[:, 1].astype(float),
+        "t_end": arr[:, 2].astype(float),
+        "duration": arr[:, 3].astype(float),
+        "rewarded": arr[:, 4].astype(float),
+        "non_rewarded": arr[:, 5].astype(float),
+        "manual": arr[:, 6].astype(float),
+        "is_valid": arr[:, 7].astype(bool),
+    }
+
+
+def build_session_plot_bout_timeline(
+    session,
+    title="Bout events over raw time",
+    y_max=30,
+):
+    data = extract_bout_timeline_data(session)
+
+    if data is None:
+        return None
+
+    t_start = data["t_start"]
+    t_end = data["t_end"]
+    duration = data["duration"]
+
+    rewarded = data["rewarded"]
+    non_rewarded = data["non_rewarded"]
+    manual = data["manual"]
+    valid = data["is_valid"]
+    invalid = ~valid
+    manual_mask = manual > 0
+
+    n_bouts = len(data["bout_id"])
+    fig_width = min(34, max(18, n_bouts * 0.03))
+    fig_height = 6.2
+
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+
+    manual_navy = "#0B3D91"
+
+    ax.set_ylim(0, y_max)
+
+    # Invalid bouts
+    if np.any(invalid):
+        first_invalid = True
+        for xs, xe in zip(t_start[invalid], t_end[invalid]):
+            ax.axvspan(
+                xs,
+                xe,
+                color=GRAY_MAIN,
+                alpha=0.28,
+                lw=0,
+                zorder=1,
+                label="Invalid bout" if first_invalid else None,
+            )
+            first_invalid = False
+
+    # Manual bouts
+    if np.any(manual_mask):
+        first_manual = True
+        for xs, xe in zip(t_start[manual_mask], t_end[manual_mask]):
+            ax.axvspan(
+                xs,
+                xe,
+                color=manual_navy,
+                alpha=0.60,
+                lw=0,
+                zorder=2,
+                label="Manual bout" if first_manual else None,
+            )
+            first_manual = False
+
+    # Valid bout bars
+    if np.any(valid):
+        ax.bar(
+            t_start[valid],
+            rewarded[valid],
+            width=duration[valid],
+            align="edge",
+            color=GREEN_MAIN,
+            edgecolor="none",
+            label="Rewarded",
+            zorder=3,
+        )
+
+        ax.bar(
+            t_start[valid],
+            non_rewarded[valid],
+            width=duration[valid],
+            align="edge",
+            bottom=rewarded[valid],
+            color=RED_MAIN,
+            edgecolor="none",
+            label="Non-rewarded",
+            zorder=3,
+        )
+
+        if np.any(manual[valid] > 0):
+            ax.bar(
+                t_start[valid],
+                manual[valid],
+                width=duration[valid],
+                align="edge",
+                bottom=rewarded[valid] + non_rewarded[valid],
+                color=BLUE_MAIN,
+                edgecolor="none",
+                label="Manual reward",
+                zorder=4,
+            )
+
+    ax.set_xlim(t_start.min(), t_end.max())
+
+    ax.set_xlabel("Raw time", fontsize=14, color=COLORS["navy"])
+    ax.set_ylabel("Count per bout", fontsize=14, color=COLORS["navy"])
+    ax.set_title(title, fontsize=16, color=COLORS["navy"], pad=12)
+
+    ax.grid(axis="y", color=COLORS["grid"], linewidth=0.8, alpha=0.8)
+    ax.set_axisbelow(True)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color(COLORS["axis"])
+    ax.spines["bottom"].set_color(COLORS["axis"])
+
+    ax.tick_params(axis="both", labelsize=12, colors=COLORS["gray"])
+
+    handles, labels = ax.get_legend_handles_labels()
+    order = ["Rewarded", "Non-rewarded", "Manual reward", "Manual bout", "Invalid bout"]
+    ordered = [(h, l) for name in order for h, l in zip(handles, labels) if l == name]
+
+    if ordered:
+        legend = ax.legend(
+            [x[0] for x in ordered],
+            [x[1] for x in ordered],
+            loc="upper right",
+            ncol=3,
+            fontsize=14,
+            frameon=True,
+            fancybox=True,
+            framealpha=0.95,
+            borderpad=0.8,
+            labelspacing=0.8,
+            handlelength=1.8,
+            handletextpad=0.6,
+        )
+        legend.get_frame().set_facecolor("white")
+        legend.get_frame().set_edgecolor(COLORS["axis"])
+        legend.get_frame().set_linewidth(1.0)
+
+    fig.tight_layout()
+    return fig

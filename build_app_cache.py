@@ -12,6 +12,8 @@ from app_functions import (
     plot_regression_rewards_failures_and_slope,
     build_session_plot_rewards_vs_failures,
     build_session_plot_failure_distribution,
+    build_session_plot_bout_timeline,
+    count_valid_bouts,
     save_figure,
 )
 
@@ -122,6 +124,7 @@ def main():
 
             path1 = one_session_dir / "rewards_vs_failures.png"
             path2 = one_session_dir / "failure_distribution.png"
+            path3 = one_session_dir / "bout_timeline.png"
 
             if not path1.exists():
                 fig1 = build_session_plot_rewards_vs_failures(row, mouse_id, date_str)
@@ -135,6 +138,17 @@ def main():
                     save_figure(fig2, path2)
                     total_new_plots += 1
 
+            if not path3.exists():
+                fig3 = build_session_plot_bout_timeline(
+                    row,
+                    title="Bout timeline",
+                )
+                if fig3 is not None:
+                    save_figure(fig3, path3)
+                    total_new_plots += 1
+
+            valid_bout_count = count_valid_bouts(row)
+
             meta_rows.append({
                 "Mouse_ID": mouse_id,
                 "Date": date_value,
@@ -143,6 +157,7 @@ def main():
                 "Protocol": row["Protocol"],
                 "Probas": row["Probas"],
                 "Number of Bouts": row.get("Number of Bouts"),
+                "Number of Valid Bouts": valid_bout_count,
                 "Number of Rewarded Licks": row.get("Number of Rewarded Licks"),
                 "protocol_strip_path": (overview_dir / "protocol_strip.png").relative_to(OUT_DIR).as_posix(),
                 "bout_count_rewards_path": (overview_dir / "bout_count_rewards.png").relative_to(OUT_DIR).as_posix(),
@@ -154,6 +169,7 @@ def main():
                 ),
                 "session_rewards_vs_failures_path": path1.relative_to(OUT_DIR).as_posix(),
                 "session_failure_distribution_path": path2.relative_to(OUT_DIR).as_posix(),
+                "session_bout_timeline_path": path3.relative_to(OUT_DIR).as_posix(),
             })
 
     df_meta = pd.DataFrame(meta_rows)
