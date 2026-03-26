@@ -29,9 +29,6 @@ PAGE_BG = "#F7FAFC"
 MUTED = "#748091"
 WHITE = "#FFFFFF"
 
-GREEN = "#22C55E"
-GRAY_BAR = "#D9E1EA"
-
 PROTOCOL_LABELS = {
     1: "Training 1",
     2: "Training 2",
@@ -65,12 +62,12 @@ def inject_css():
             background: transparent;
         }}
 
-        .app-title {{
-            font-size: 1.95rem;
+        .sidebar-title {{
+            font-size: 1.2rem;
             font-weight: 700;
             color: {NAVY};
-            margin-bottom: 0.2rem;
-            line-height: 1.15;
+            line-height: 1.2;
+            margin-bottom: 0.25rem;
         }}
 
         .metric-card {{
@@ -195,7 +192,7 @@ def metric_card(label, value):
     )
 
 
-def bout_gauge_card(valid_bouts, total_bouts):
+def bout_simple_card(valid_bouts, total_bouts):
     try:
         valid = int(valid_bouts) if pd.notna(valid_bouts) else 0
     except Exception:
@@ -206,37 +203,11 @@ def bout_gauge_card(valid_bouts, total_bouts):
     except Exception:
         total = 0
 
-    total = max(total, 0)
-    valid = max(0, min(valid, total))
-    invalid = max(total - valid, 0)
-
-    pct = 0 if total == 0 else 100 * valid / total
-
     st.markdown(
         f"""
         <div class="metric-card">
             <div class="metric-label">Valid Bouts</div>
             <div class="metric-value">{valid} / {total}</div>
-
-            <div style="margin-top:8px;">
-                <div style="
-                    width:100%;
-                    height:10px;
-                    background:{GRAY_BAR};
-                    border-radius:999px;
-                    overflow:hidden;
-                ">
-                    <div style="
-                        width:{pct:.1f}%;
-                        height:100%;
-                        background:{GREEN};
-                    "></div>
-                </div>
-            </div>
-
-            <div style="font-size:0.8rem;color:{MUTED};margin-top:4px;">
-                invalid: {invalid}
-            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -273,8 +244,6 @@ def dataframe_card(dataframe):
 # =============================================================================
 inject_css()
 
-st.markdown('<div class="app-title">Behavior dashboard</div>', unsafe_allow_html=True)
-
 try:
     cache_dir = ensure_cache_local()
     df = load_metadata(cache_dir)
@@ -293,15 +262,17 @@ try:
 
     default_mouse_index = mouse_options.index(default_mouse) if default_mouse in mouse_options else 0
 
-    mouse_id = st.sidebar.selectbox(
-        "Mouse",
-        mouse_options,
-        index=default_mouse_index,
-    )
-
-    df_mouse = df[df["Mouse_ID"] == mouse_id].copy()
-
     with st.sidebar:
+        st.markdown('<div class="sidebar-title">🐭 Behavior dashboard</div>', unsafe_allow_html=True)
+
+        mouse_id = st.selectbox(
+            "Mouse",
+            mouse_options,
+            index=default_mouse_index,
+        )
+
+        df_mouse = df[df["Mouse_ID"] == mouse_id].copy()
+
         st.markdown("---")
         view_mode = st.radio("View", ["Overview", "Session focus"], index=0)
         st.markdown("---")
@@ -394,7 +365,7 @@ try:
         with m3:
             metric_card("Probas", row["Probas"])
         with m4:
-            bout_gauge_card(
+            bout_simple_card(
                 row.get("Valid Bouts"),
                 row.get("Number of Bouts"),
             )
