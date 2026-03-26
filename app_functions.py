@@ -27,29 +27,37 @@ plt.rcParams.update({
     "ytick.labelsize": 9,
     "axes.spines.top": False,
     "axes.spines.right": False,
-    "axes.linewidth": 0.8,
+    "axes.linewidth": 0.85,
     "grid.alpha": 0.16,
+    "legend.frameon": False,
 })
 
-YELLOW = "#F6E06E"
-BLUE = "#90C5FF"
-RED = "#F2A093"
+# Protocol colors
+YELLOW = "#F4D35E"
+BLUE = "#8EC5FF"
+RED = "#F29A8E"
+
+# Dashboard palette
+BLUE_MAIN = "#2563EB"
+BLUE_FILL = "#60A5FA"
+GREEN_MAIN = "#22C55E"
+ORANGE_MAIN = "#F59E0B"
+GRAY_MAIN = "#94A3B8"
+RED_MAIN = "#EF4444"
+PURPLE_MAIN = "#7C3AED"
 
 COLORS = {
-    "navy": "#223248",
-    "blue": BLUE,
-    "blue_light": "#F2F8FF",
-    "purple": "#8574C8",
-    "purple_light": "#EEE9FA",
-    "green": "#5DA884",
-    "green_light": "#E5F2EB",
-    "red": RED,
-    "red_light": "#FFF0EC",
-    "yellow": YELLOW,
-    "yellow_light": "#FFF9D9",
-    "gray": "#748091",
-    "gray_light": "#F1F4F8",
-    "grid": "#D9E1EA",
+    "navy": "#1E293B",
+    "gray": "#64748B",
+    "grid": "#E2E8F0",
+    "axis": "#CBD5E1",
+    "blue_main": BLUE_MAIN,
+    "blue_fill": BLUE_FILL,
+    "green_main": GREEN_MAIN,
+    "orange_main": ORANGE_MAIN,
+    "gray_main": GRAY_MAIN,
+    "red_main": RED_MAIN,
+    "purple_main": PURPLE_MAIN,
 }
 
 PROTOCOL_COLORS = {
@@ -150,16 +158,16 @@ def smooth_discrete_curve_fixed_range(
 
 def shade_color(base_rgb, p):
     if p is None or pd.isna(p):
-        return (*base_rgb, 0.42)
+        return (*base_rgb, 0.26)
 
     x = p / 0.30
     r, g, b = base_rgb
     h, l, s = colorsys.rgb_to_hls(r, g, b)
 
-    new_l = 0.96 - 0.14 * x
-    new_s = min(1, s + (0.12 + 0.15 * x))
+    new_l = 0.975 - 0.11 * x
+    new_s = min(1, s + (0.10 + 0.10 * x))
     nr, ng, nb = colorsys.hls_to_rgb(h, new_l, new_s)
-    return (nr, ng, nb, 0.42)
+    return (nr, ng, nb, 0.24)
 
 
 def parse_proba(p):
@@ -206,6 +214,94 @@ def get_protocol_blocks(df_session):
     return blocks
 
 
+def style_axes(ax):
+    ax.spines["left"].set_color(COLORS["axis"])
+    ax.spines["bottom"].set_color(COLORS["axis"])
+    ax.tick_params(colors=COLORS["gray"])
+    ax.yaxis.label.set_color(COLORS["navy"])
+    ax.xaxis.label.set_color(COLORS["navy"])
+    ax.title.set_color(COLORS["navy"])
+    ax.grid(alpha=0.22, axis="y", color=COLORS["grid"], linewidth=0.8)
+    ax.set_axisbelow(True)
+
+
+def add_proba_labels(ax, blocks, y_text, color=None, fontsize=8.3):
+    if color is None:
+        color = COLORS["gray"]
+
+    for start, end, p, proto in blocks:
+        if p is None:
+            continue
+        center = (start + end) / 2
+        ax.text(
+            center,
+            y_text,
+            f"{p:.2f}",
+            ha="center",
+            va="top",
+            fontsize=fontsize,
+            color=color,
+            clip_on=False,
+        )
+
+
+def valid_bout_mask_from_row(row, target_len=None):
+    mask = ensure_array(row.get("Correct Bouts")).astype(bool)
+    if target_len is None:
+        return mask
+    if len(mask) == 0:
+        return np.zeros(target_len, dtype=bool)
+    if len(mask) >= target_len:
+        return mask[:target_len]
+    out = np.zeros(target_len, dtype=bool)
+    out[:len(mask)] = mask
+    return out
+
+
+def count_valid_bouts(row):
+    valid_bouts = ensure_array(row.get("Correct Bouts")).astype(bool)
+    if len(valid_bouts) == 0:
+        return 0
+    return int(np.sum(valid_bouts))
+
+
+def fit_exponential_trend_with_band(y_values):
+    y = np.asarray(y_values, dtype=float)
+    x = np.arange(len(y), dtype=float)
+
+    mask = np.isfinite(y) & (y > 0)
+    x_fit = x[mask]
+    y_fit = y[mask]
+
+    if len(y_fit) < 2:
+        return None
+
+    log_y = np.log(y_fit)
+
+    model = LinearRegression()
+    model.fit(x_fit.reshape(-1, 1), log_y)
+
+    log_pred = model.predict(x_fit.reshape(-1, 1))
+    residuals = log_y - log_pred
+    sigma_log = float(np.std(residuals, ddof=1)) if len(residuals) > 1 else 0.0
+
+    a = float(np.exp(model.intercept_))
+    b = float(model.coef_[0])
+
+    x_smooth = np.linspace(x.min(), x.max(), 300)
+    y_smooth = a * np.exp(b * x_smooth)
+
+    y_lower = y_smooth * np.exp(-sigma_log)
+    y_upper = y_smooth * np.exp(+sigma_log)
+
+    return {
+        "x_smooth": x_smooth,
+        "y_smooth": y_smooth,
+        "y_lower": y_lower,
+        "y_upper": y_upper,
+    }
+
+
 def prepare_mouse_dataframe(df):
     df = df.copy()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
@@ -218,7 +314,7 @@ def prepare_mouse_dataframe(df):
 
     session_cmap = LinearSegmentedColormap.from_list(
         "session_cmap",
-        [PROTOCOL_HEX[2], PROTOCOL_HEX[3]]
+        [BLUE_MAIN, RED_MAIN]
     )
 
     return df, session_cmap
@@ -369,6 +465,8 @@ def plot_bout_count_rewards(df, mouse):
 
     df_session = df_session.sort_values("Date").reset_index(drop=True)
     df_session["SessionIndex"] = range(1, len(df_session) + 1)
+    df_session["ValidBoutCount"] = df_session.apply(count_valid_bouts, axis=1)
+    df_session["RewardedCount"] = df_session["Number of Rewarded Licks"].fillna(0)
 
     fig, ax = plt.subplots(figsize=(14, 5.2))
     fig.patch.set_facecolor("white")
@@ -385,76 +483,71 @@ def plot_bout_count_rewards(df, mouse):
 
     ax.plot(
         df_session["SessionIndex"],
-        df_session["Number of Bouts"],
+        df_session["ValidBoutCount"],
         marker="o",
-        markersize=4.5,
-        linewidth=2.0,
+        markersize=4.8,
+        linewidth=2.25,
         color=COLORS["navy"],
         zorder=20,
-        label="Bouts",
+        label="Valid bouts",
     )
 
-    ymin, ymax = ax.get_ylim()
-    yrange = ymax - ymin
-
-    df_session["RewardedCount"] = df_session["Number of Rewarded Licks"].fillna(0)
     ax.plot(
         df_session["SessionIndex"],
         df_session["RewardedCount"],
         marker="s",
-        markersize=4.2,
+        markersize=4.6,
         linestyle="--",
-        linewidth=1.9,
-        color=COLORS["green"],
+        linewidth=2.1,
+        color=GREEN_MAIN,
         zorder=25,
         label="Rewarded licks",
     )
 
-    max_reward = df_session["RewardedCount"].max()
-    new_ymax = max(ymax, max_reward * 1.12 if pd.notna(max_reward) else ymax)
-    ax.set_ylim(ymin - yrange * 0.12, new_ymax)
+    ymin_data = min(
+        np.nanmin(df_session["ValidBoutCount"].to_numpy(dtype=float)),
+        np.nanmin(df_session["RewardedCount"].to_numpy(dtype=float)),
+    )
+    ymax_data = max(
+        np.nanmax(df_session["ValidBoutCount"].to_numpy(dtype=float)),
+        np.nanmax(df_session["RewardedCount"].to_numpy(dtype=float)),
+    )
+
+    yrange = max(1.0, ymax_data - ymin_data)
+    bottom_margin = 0.11 * yrange
+    top_margin = 0.12 * yrange
+    y_text = ymin_data - 0.048 * yrange
+
+    ax.set_ylim(ymin_data - bottom_margin, ymax_data + top_margin)
 
     for _, row in df_session.iterrows():
         ax.text(
             row["SessionIndex"],
-            row["RewardedCount"] + new_ymax * 0.016,
+            row["RewardedCount"] + 0.016 * (ymax_data + top_margin),
             str(int(row["RewardedCount"])),
             ha="center",
             fontsize=8,
-            color=COLORS["green"],
+            color=GREEN_MAIN,
             zorder=50,
         )
 
-    for i, (start, end, p, proto) in enumerate(blocks):
-        if p is not None:
-            center = (start + end) / 2
-            offset = 0.04 if i % 2 == 0 else 0.08
-            ax.text(
-                center,
-                ymin - yrange * offset,
-                f"{p:.2f}",
-                ha="center",
-                va="top",
-                fontsize=8.5,
-                color=COLORS["gray"],
-            )
+    add_proba_labels(ax, blocks, y_text=y_text, color=COLORS["gray"], fontsize=8.3)
 
     ax.set_xlabel("Training sessions", color=COLORS["navy"])
     ax.set_ylabel("Counts", color=COLORS["navy"])
-    ax.set_title(f"Mouse {mouse} - Bout count + rewarded licks", color=COLORS["navy"])
+    ax.set_title(f"Mouse {mouse} - Valid bout count + rewarded licks", color=COLORS["navy"])
     ax.set_xticks(df_session["SessionIndex"])
-    ax.grid(alpha=0.22, axis="y", color=COLORS["grid"])
+    style_axes(ax)
 
     ax.legend(
         handles=[
             mpatches.Patch(color=PROTOCOL_HEX[1], label="Training 1"),
             mpatches.Patch(color=PROTOCOL_HEX[2], label="Training 2"),
             mpatches.Patch(color=PROTOCOL_HEX[3], label="Task"),
-            mlines.Line2D([], [], color=COLORS["navy"], marker="o", label="Bouts"),
-            mlines.Line2D([], [], color=COLORS["green"], marker="s", linestyle="--", label="Rewarded licks"),
+            mlines.Line2D([], [], color=COLORS["navy"], marker="o", label="Valid bouts"),
+            mlines.Line2D([], [], color=GREEN_MAIN, marker="s", linestyle="--", label="Rewarded licks"),
         ],
         loc="upper left",
-        frameon=False,
     )
 
     fig.tight_layout()
@@ -485,55 +578,70 @@ def plot_stacked_lick_counts(df, mouse):
         ax.axvspan(s - 0.5, s + 0.5, color=shade_color(base, p), zorder=1)
 
     blocks = get_protocol_blocks(df_session)
-
     x = df_session["SessionIndex"].to_numpy()
-    ax.bar(x, reward_total, width=0.62, color=YELLOW, label="Rewarded", zorder=40)
-    ax.bar(x, nonreward_total, bottom=reward_total, width=0.62, color=RED, label="Non-rewarded", zorder=40)
+
+    ax.bar(
+        x,
+        reward_total,
+        width=0.62,
+        color=GREEN_MAIN,
+        alpha=0.98,
+        edgecolor=GREEN_MAIN,
+        linewidth=0.8,
+        label="Rewarded",
+        zorder=40,
+    )
+    ax.bar(
+        x,
+        nonreward_total,
+        bottom=reward_total,
+        width=0.62,
+        color=ORANGE_MAIN,
+        alpha=0.98,
+        edgecolor=ORANGE_MAIN,
+        linewidth=0.8,
+        label="Non-rewarded",
+        zorder=40,
+    )
     ax.bar(
         x,
         invalid_total,
         bottom=np.array(reward_total) + np.array(nonreward_total),
         width=0.62,
-        color=BLUE,
+        color=GRAY_MAIN,
+        alpha=0.98,
+        edgecolor=GRAY_MAIN,
+        linewidth=0.8,
         label="Invalid",
         zorder=40,
     )
 
-    ymin, ymax = ax.get_ylim()
-    yrange = ymax - ymin
+    stacked_totals = np.array(reward_total) + np.array(nonreward_total) + np.array(invalid_total)
+    ymax_data = float(np.nanmax(stacked_totals)) if len(stacked_totals) else 1.0
+    yrange = max(1.0, ymax_data)
+    bottom_margin = 0.11 * yrange
+    y_text = -0.045 * yrange
 
-    for i, (start, end, p, proto) in enumerate(blocks):
-        if p is not None:
-            center = (start + end) / 2
-            offset = 0.04 if i % 2 == 0 else 0.08
-            ax.text(
-                center,
-                ymin - yrange * offset,
-                f"{p:.2f}",
-                ha="center",
-                va="top",
-                fontsize=8.5,
-                color=COLORS["gray"],
-            )
+    ax.set_ylim(-bottom_margin, ymax_data * 1.04)
+    add_proba_labels(ax, blocks, y_text=y_text, color=COLORS["gray"], fontsize=8.3)
 
-    ax.set_ylim(ymin - yrange * 0.12, ymax)
     ax.set_title(f"Mouse {mouse} - Lick counts per session", color=COLORS["navy"])
     ax.set_xlabel("Training sessions", color=COLORS["navy"])
     ax.set_ylabel("Total licks", color=COLORS["navy"])
     ax.set_xticks(x)
-    ax.grid(alpha=0.22, axis="y", color=COLORS["grid"])
+    style_axes(ax)
 
     lick_legend = [
-        mpatches.Patch(color=YELLOW, label="Rewarded"),
-        mpatches.Patch(color=RED, label="Non-rewarded"),
-        mpatches.Patch(color=BLUE, label="Invalid"),
+        mpatches.Patch(color=GREEN_MAIN, label="Rewarded"),
+        mpatches.Patch(color=ORANGE_MAIN, label="Non-rewarded"),
+        mpatches.Patch(color=GRAY_MAIN, label="Invalid"),
     ]
     protocol_legend = [
         mpatches.Patch(color=PROTOCOL_HEX[1], label="Training 1"),
         mpatches.Patch(color=PROTOCOL_HEX[2], label="Training 2"),
         mpatches.Patch(color=PROTOCOL_HEX[3], label="Task"),
     ]
-    ax.legend(handles=lick_legend + protocol_legend, loc="upper left", frameon=False)
+    ax.legend(handles=lick_legend + protocol_legend, loc="upper left")
 
     fig.tight_layout()
     return fig
@@ -544,41 +652,71 @@ def plot_histogram_kde_failures(df, mouse):
     if df_session.empty:
         return None
 
-    df_session["ConsFailures"] = df_session.apply(compute_failures, axis=1)
-    all_failures = np.array([v for L in df_session["ConsFailures"] for v in L])
+    valid_failures = []
 
-    if len(all_failures) == 0:
+    for _, row in df_session.iterrows():
+        failures = np.asarray(compute_failures(row), dtype=float)
+        valid_mask = valid_bout_mask_from_row(row, target_len=len(failures))
+        failures = failures[valid_mask]
+        failures = failures[np.isfinite(failures)]
+        failures = failures[failures > 0]
+        if len(failures) > 0:
+            valid_failures.append(failures)
+
+    if len(valid_failures) == 0:
         return None
+
+    all_failures = np.concatenate(valid_failures)
 
     fig, ax = plt.subplots(figsize=(8, 5.2))
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
 
-    max_x = min(50, int(all_failures.max())) if len(all_failures) else 50
+    max_x = min(50, int(np.nanmax(all_failures))) if len(all_failures) else 50
     max_x = max(max_x, 5)
 
-    ax.hist(
-        all_failures,
-        bins=30,
-        range=(0, max_x),
-        density=True,
-        color=BLUE,
-        alpha=0.35,
-        edgecolor=BLUE,
+    failures_int = np.rint(all_failures).astype(int)
+    failures_int = failures_int[(failures_int >= 1) & (failures_int <= max_x)]
+
+    all_x = np.arange(1, max_x + 1)
+    counts_full = np.zeros_like(all_x, dtype=float)
+
+    if len(failures_int) > 0:
+        vals, cnts = np.unique(failures_int, return_counts=True)
+        for v, c in zip(vals, cnts):
+            if v in all_x:
+                counts_full[all_x == v] = c
+
+    p_emp = counts_full / counts_full.sum() if counts_full.sum() > 0 else counts_full
+
+    ax.bar(
+        all_x,
+        p_emp,
+        width=0.8,
+        color=BLUE_FILL,
+        edgecolor=BLUE_FILL,
+        alpha=0.30,
         linewidth=1.0,
+        zorder=10,
     )
 
-    if len(np.unique(all_failures)) > 1:
-        kde = gaussian_kde(all_failures, bw_method=0.08)
-        xs = np.linspace(0, max_x, 300)
-        ys = kde(xs)
-        ax.plot(xs, ys, color=BLUE, lw=2.3)
+    x_smooth, y_smooth = smooth_discrete_curve_fixed_range(
+        all_x,
+        p_emp,
+        x_min=1,
+        x_max=max_x,
+        sigma=1.0,
+        points=900,
+    )
+
+    ax.plot(x_smooth, y_smooth, color=BLUE_MAIN, linewidth=2.6, zorder=20)
+    ax.fill_between(x_smooth, y_smooth, color=BLUE_MAIN, alpha=0.14, zorder=15)
 
     ax.set_title(f"Mouse {mouse} - Distribution of consecutive failures", color=COLORS["navy"])
     ax.set_xlabel("Consecutive failures", color=COLORS["navy"])
-    ax.set_ylabel("Density", color=COLORS["navy"])
-    ax.set_xlim(0, max_x)
-    ax.grid(alpha=0.22, axis="y", color=COLORS["grid"])
+    ax.set_ylabel("Probability", color=COLORS["navy"])
+    ax.set_xlim(1, max_x)
+    style_axes(ax)
 
     fig.tight_layout()
     return fig
@@ -602,11 +740,8 @@ def plot_kde_failures_by_session(df, mouse, session_cmap, bandwidth_factor=0.8):
     valid_sessions = []
     for _, row in df_session.iterrows():
         failures = np.array(compute_failures(row), dtype=float)
-        valid_bouts = ensure_array(row.get("Correct Bouts")).astype(bool)
-
-        if len(valid_bouts) == len(failures):
-            failures = failures[valid_bouts]
-
+        valid_mask = valid_bout_mask_from_row(row, target_len=len(failures))
+        failures = failures[valid_mask]
         failures = failures[np.isfinite(failures)]
         failures = failures[failures > 0]
 
@@ -630,8 +765,9 @@ def plot_kde_failures_by_session(df, mouse, session_cmap, bandwidth_factor=0.8):
         ax.plot(
             xs,
             ys,
-            linewidth=2.1,
+            linewidth=2.5,
             color=color,
+            alpha=0.98,
             label=f"{date_val.strftime('%Y-%m-%d')} (n={len(failures)})",
         )
 
@@ -640,8 +776,8 @@ def plot_kde_failures_by_session(df, mouse, session_cmap, bandwidth_factor=0.8):
     ax.set_ylabel("Density", color=COLORS["navy"])
     ax.set_xlim(0, 30)
     ax.set_xticks(np.arange(0, 31, 5))
-    ax.grid(alpha=0.22, axis="y", color=COLORS["grid"])
-    ax.legend(title="Session", fontsize=8, frameon=False)
+    style_axes(ax)
+    ax.legend(title="Session", fontsize=8)
 
     fig.tight_layout()
     return fig
@@ -670,15 +806,15 @@ def plot_regression_rewards_failures_and_slope(
     for _, row in df_session.iterrows():
         failures = np.asarray(compute_failures(row), dtype=float)
         rewards = np.asarray(count_reward_per_bout(row), dtype=float)
-        valid_bouts = ensure_array(row.get("Correct Bouts")).astype(bool)
 
-        n = min(len(failures), len(rewards), len(valid_bouts))
-        failures = failures[:n]
-        rewards = rewards[:n]
-        valid_bouts = valid_bouts[:n]
+        n0 = min(len(failures), len(rewards))
+        failures = failures[:n0]
+        rewards = rewards[:n0]
 
-        failures = failures[valid_bouts]
-        rewards = rewards[valid_bouts]
+        valid_mask = valid_bout_mask_from_row(row, target_len=n0)
+
+        failures = failures[valid_mask]
+        rewards = rewards[valid_mask]
 
         mask = np.isfinite(failures) & np.isfinite(rewards)
         failures = failures[mask]
@@ -688,8 +824,8 @@ def plot_regression_rewards_failures_and_slope(
         failures = failures[mask]
         rewards = rewards[mask]
 
-        n_valid_base = len(failures)
-        if n_valid_base < min_valid_bouts:
+        n_valid = len(failures)
+        if n_valid < min_valid_bouts:
             continue
 
         mask = rewards <= max_reward
@@ -708,8 +844,7 @@ def plot_regression_rewards_failures_and_slope(
 
         valid_sessions.append({
             "date": pd.to_datetime(row["Date"]),
-            "n_base": n_valid_base,
-            "n_cut": len(failures_cut),
+            "n_valid": n_valid,
             "slope": float(model.coef_[0]),
             "intercept": float(model.intercept_),
             "mean_failures": float(np.mean(failures_cut)),
@@ -718,7 +853,7 @@ def plot_regression_rewards_failures_and_slope(
     if len(valid_sessions) == 0:
         return None
 
-    fig, axs = plt.subplots(1, 3, figsize=(20, 5.2), gridspec_kw={"wspace": 0.30})
+    fig, axs = plt.subplots(1, 3, figsize=(20, 5.4), gridspec_kw={"wspace": 0.30})
     fig.patch.set_facecolor("white")
     ax_left, ax_mid, ax_right = axs
 
@@ -732,8 +867,9 @@ def plot_regression_rewards_failures_and_slope(
             x_line,
             y_line,
             color=color,
-            linewidth=2.0,
-            label=f"{sess['date'].strftime('%Y-%m-%d')} (n={sess['n_base']}, cut={sess['n_cut']})",
+            linewidth=2.25,
+            alpha=0.98,
+            label=f"{sess['date'].strftime('%Y-%m-%d')} (n={sess['n_valid']})",
         )
 
     ax_left.set_title(f"Mouse {mouse} - Reward vs failures", color=COLORS["navy"])
@@ -742,43 +878,67 @@ def plot_regression_rewards_failures_and_slope(
     ax_left.set_xlim(1, max_reward)
     ax_left.set_ylim(1, max_failure)
     ax_left.set_xticks(np.arange(1, max_reward + 1))
-    ax_left.grid(alpha=0.22, axis="y", color=COLORS["grid"])
-    ax_left.legend(title="Session", fontsize=8, frameon=False)
+    style_axes(ax_left)
+    ax_left.legend(title="Session", fontsize=8)
 
     dates = [sess["date"] for sess in valid_sessions]
     slopes = np.array([sess["slope"] for sess in valid_sessions], dtype=float)
     x_idx = np.arange(len(valid_sessions))
 
-    ax_mid.plot(x_idx, slopes, color=BLUE, linewidth=2.0, marker="o", markersize=4.5)
-    if len(slopes) >= 2:
-        trend_model = LinearRegression()
-        trend_model.fit(x_idx.reshape(-1, 1), slopes)
-        x_fit = np.linspace(x_idx.min(), x_idx.max(), 200)
-        y_fit = trend_model.predict(x_fit.reshape(-1, 1))
-        ax_mid.plot(x_fit, y_fit, linestyle="--", linewidth=1.9, color=RED)
+    ax_mid.scatter(x_idx, slopes, color="black", s=34, zorder=20)
+
+    exp_fit_slopes = fit_exponential_trend_with_band(slopes)
+    if exp_fit_slopes is not None:
+        ax_mid.fill_between(
+            exp_fit_slopes["x_smooth"],
+            exp_fit_slopes["y_lower"],
+            exp_fit_slopes["y_upper"],
+            color=PURPLE_MAIN,
+            alpha=0.16,
+            zorder=10,
+        )
+        ax_mid.plot(
+            exp_fit_slopes["x_smooth"],
+            exp_fit_slopes["y_smooth"],
+            color=PURPLE_MAIN,
+            linewidth=2.5,
+            zorder=15,
+        )
 
     ax_mid.set_title("Slope over time", color=COLORS["navy"])
     ax_mid.set_xlabel("Session date", color=COLORS["navy"])
     ax_mid.set_ylabel("Linear slope", color=COLORS["navy"])
     ax_mid.set_xticks(x_idx)
     ax_mid.set_xticklabels([d.strftime("%Y-%m-%d") for d in dates], rotation=45, ha="right")
-    ax_mid.grid(alpha=0.22, axis="y", color=COLORS["grid"])
+    style_axes(ax_mid)
 
     mean_failures = np.array([sess["mean_failures"] for sess in valid_sessions], dtype=float)
-    ax_right.plot(x_idx, mean_failures, color=YELLOW, linewidth=2.0, marker="o", markersize=4.5)
-    if len(mean_failures) >= 2:
-        trend_model = LinearRegression()
-        trend_model.fit(x_idx.reshape(-1, 1), mean_failures)
-        x_fit = np.linspace(x_idx.min(), x_idx.max(), 200)
-        y_fit = trend_model.predict(x_fit.reshape(-1, 1))
-        ax_right.plot(x_fit, y_fit, linestyle="--", linewidth=1.9, color=RED)
+    ax_right.scatter(x_idx, mean_failures, color="black", s=34, zorder=20)
+
+    exp_fit_mean = fit_exponential_trend_with_band(mean_failures)
+    if exp_fit_mean is not None:
+        ax_right.fill_between(
+            exp_fit_mean["x_smooth"],
+            exp_fit_mean["y_lower"],
+            exp_fit_mean["y_upper"],
+            color=PURPLE_MAIN,
+            alpha=0.16,
+            zorder=10,
+        )
+        ax_right.plot(
+            exp_fit_mean["x_smooth"],
+            exp_fit_mean["y_smooth"],
+            color=PURPLE_MAIN,
+            linewidth=2.5,
+            zorder=15,
+        )
 
     ax_right.set_title("Mean failures over time", color=COLORS["navy"])
     ax_right.set_xlabel("Session date", color=COLORS["navy"])
     ax_right.set_ylabel("Mean consecutive failures", color=COLORS["navy"])
     ax_right.set_xticks(x_idx)
     ax_right.set_xticklabels([d.strftime("%Y-%m-%d") for d in dates], rotation=45, ha="right")
-    ax_right.grid(alpha=0.22, axis="y", color=COLORS["grid"])
+    style_axes(ax_right)
 
     fig.tight_layout()
     return fig
@@ -816,12 +976,12 @@ def prepare_session_arrays(session, reward_cut=7):
 
 
 def build_session_plot_rewards_vs_failures(session, mouse_id, date_str, reward_cut=7):
-    rewards, failures, _ = prepare_session_arrays(session, reward_cut=reward_cut)
+    rewards, failures, n_valid = prepare_session_arrays(session, reward_cut=reward_cut)
 
     title_suffix = f" - {session['Probas']}" if "Probas" in session.index else ""
     title = f"{mouse_id} - {date_str}{title_suffix}"
 
-    fig, ax = plt.subplots(figsize=(6.6, 4.9))
+    fig, ax = plt.subplots(figsize=(6.8, 5.0))
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
 
@@ -831,11 +991,32 @@ def build_session_plot_rewards_vs_failures(session, mouse_id, date_str, reward_c
         stds = np.array([failures[rewards == r].std() for r in reward_bins])
         counts = np.array([np.sum(rewards == r) for r in reward_bins])
 
-        ax.fill_between(reward_bins, means - stds, means + stds, color=BLUE, alpha=0.25)
-        ax.plot(reward_bins, means, color=BLUE, linewidth=2.3, marker="o", markersize=4.5)
+        ax.fill_between(
+            reward_bins,
+            means - stds,
+            means + stds,
+            color=BLUE_FILL,
+            alpha=0.22,
+        )
+        ax.plot(
+            reward_bins,
+            means,
+            color=BLUE_MAIN,
+            linewidth=2.45,
+            marker="o",
+            markersize=4.8,
+        )
 
         for x, y, c in zip(reward_bins, means, counts):
-            ax.text(x, y + 0.25, str(int(c)), ha="center", va="bottom", fontsize=8, color=COLORS["gray"])
+            ax.text(
+                x,
+                y + 0.25,
+                str(int(c)),
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color=COLORS["gray"],
+            )
 
     ax.set_title(title, color=COLORS["navy"])
     ax.set_xlabel("Consecutive rewards", color=COLORS["navy"])
@@ -843,17 +1024,28 @@ def build_session_plot_rewards_vs_failures(session, mouse_id, date_str, reward_c
     ax.set_xlim(0.8, reward_cut + 0.2)
     ax.set_ylim(bottom=1)
     ax.set_xticks(np.arange(1, reward_cut + 1))
-    ax.grid(axis="y", alpha=0.22, color=COLORS["grid"])
+    style_axes(ax)
+
+    ax.text(
+        0.99,
+        0.98,
+        f"n valid bouts = {n_valid}",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=8.5,
+        color=COLORS["gray"],
+    )
 
     fig.tight_layout()
     return fig
 
 
 def build_session_plot_failure_distribution(session, failure_xlim=(0, 25), reward_cut=7):
-    rewards, failures, _ = prepare_session_arrays(session, reward_cut=reward_cut)
+    rewards, failures, n_valid = prepare_session_arrays(session, reward_cut=reward_cut)
     _ = rewards
 
-    fig, ax = plt.subplots(figsize=(6.6, 4.9))
+    fig, ax = plt.subplots(figsize=(6.8, 5.0))
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
 
@@ -871,7 +1063,16 @@ def build_session_plot_failure_distribution(session, failure_xlim=(0, 25), rewar
 
     p_emp = counts_full / counts_full.sum() if counts_full.sum() > 0 else counts_full
 
-    ax.bar(all_x, p_emp, width=0.8, color=RED, edgecolor=RED, alpha=0.35, linewidth=1.0)
+    ax.bar(
+        all_x,
+        p_emp,
+        width=0.8,
+        color=BLUE_FILL,
+        edgecolor=BLUE_FILL,
+        alpha=0.28,
+        linewidth=1.0,
+        zorder=10,
+    )
 
     x_smooth, y_smooth = smooth_discrete_curve_fixed_range(
         all_x,
@@ -882,14 +1083,25 @@ def build_session_plot_failure_distribution(session, failure_xlim=(0, 25), rewar
         points=900,
     )
 
-    ax.plot(x_smooth, y_smooth, color=RED, linewidth=2.4)
-    ax.fill_between(x_smooth, y_smooth, color=RED, alpha=0.18)
+    ax.plot(x_smooth, y_smooth, color=BLUE_MAIN, linewidth=2.5, zorder=20)
+    ax.fill_between(x_smooth, y_smooth, color=BLUE_MAIN, alpha=0.14, zorder=15)
 
     ax.set_xlabel("Consecutive failures", color=COLORS["navy"])
     ax.set_ylabel("Probability", color=COLORS["navy"])
     ax.set_xlim(1, failure_xlim[1])
     ax.set_xticks(np.arange(1, failure_xlim[1] + 1, 5))
-    ax.grid(axis="y", alpha=0.22, color=COLORS["grid"])
+    style_axes(ax)
+
+    ax.text(
+        0.99,
+        0.98,
+        f"n valid bouts = {n_valid}",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=8.5,
+        color=COLORS["gray"],
+    )
 
     fig.tight_layout()
     return fig
