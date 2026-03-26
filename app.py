@@ -123,77 +123,6 @@ def inject_css():
             color: {MUTED};
             font-size: 0.9rem;
         }}
-
-        .gauge-card {{
-            background: {WHITE};
-            border: 1px solid {CARD_BORDER};
-            border-radius: 16px;
-            padding: 14px 16px;
-            box-shadow: 0 1px 2px rgba(34,50,72,0.04);
-        }}
-
-        .gauge-label {{
-            font-size: 0.84rem;
-            color: {MUTED};
-            margin-bottom: 0.3rem;
-        }}
-
-        .gauge-values {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-        }}
-
-        .gauge-main {{
-            font-size: 1.18rem;
-            font-weight: 700;
-            color: {NAVY};
-            line-height: 1.2;
-        }}
-
-        .gauge-sub {{
-            font-size: 0.82rem;
-            color: {MUTED};
-        }}
-
-        .gauge-track {{
-            width: 100%;
-            height: 12px;
-            background: {GRAY_BAR};
-            border-radius: 999px;
-            overflow: hidden;
-        }}
-
-        .gauge-fill {{
-            height: 100%;
-            background: {GREEN};
-            border-radius: 999px 0 0 999px;
-        }}
-
-        .sidebar-mouse-wrap {{
-            margin-top: 2.2rem;
-            padding-top: 1rem;
-            border-top: 1px solid {CARD_BORDER};
-            text-align: center;
-        }}
-
-        .sidebar-mouse-icon {{
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 56px;
-            height: 56px;
-            border-radius: 16px;
-            background: #F3F7FB;
-            border: 1px solid {CARD_BORDER};
-            margin-bottom: 0.45rem;
-        }}
-
-        .sidebar-mouse-caption {{
-            color: {MUTED};
-            font-size: 0.82rem;
-        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -285,14 +214,28 @@ def bout_gauge_card(valid_bouts, total_bouts):
 
     st.markdown(
         f"""
-        <div class="gauge-card">
-            <div class="gauge-label">Valid Bouts</div>
-            <div class="gauge-values">
-                <div class="gauge-main">{valid} / {total}</div>
-                <div class="gauge-sub">invalid: {invalid}</div>
+        <div class="metric-card">
+            <div class="metric-label">Valid Bouts</div>
+            <div class="metric-value">{valid} / {total}</div>
+
+            <div style="margin-top:8px;">
+                <div style="
+                    width:100%;
+                    height:10px;
+                    background:{GRAY_BAR};
+                    border-radius:999px;
+                    overflow:hidden;
+                ">
+                    <div style="
+                        width:{pct:.1f}%;
+                        height:100%;
+                        background:{GREEN};
+                    "></div>
+                </div>
             </div>
-            <div class="gauge-track">
-                <div class="gauge-fill" style="width: {pct:.1f}%;"></div>
+
+            <div style="font-size:0.8rem;color:{MUTED};margin-top:4px;">
+                invalid: {invalid}
             </div>
         </div>
         """,
@@ -323,31 +266,6 @@ def plot_card(path):
 def dataframe_card(dataframe):
     with st.container(border=True):
         st.dataframe(dataframe, use_container_width=True, hide_index=True)
-
-
-def sidebar_mouse_logo():
-    st.markdown(
-        f"""
-        <div class="sidebar-mouse-wrap">
-            <div class="sidebar-mouse-icon">
-                <svg width="34" height="34" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="22" cy="18" r="8" fill="#D7E3F4"/>
-                    <circle cx="42" cy="18" r="8" fill="#D7E3F4"/>
-                    <ellipse cx="32" cy="34" rx="18" ry="16" fill="#E8EEF7"/>
-                    <ellipse cx="25" cy="33" rx="2.2" ry="2.6" fill="#223248"/>
-                    <ellipse cx="39" cy="33" rx="2.2" ry="2.6" fill="#223248"/>
-                    <circle cx="32" cy="39" r="2.8" fill="#F29A8E"/>
-                    <path d="M32 42C30.8 43.6 29 44.5 27 44.5" stroke="#748091" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M32 42C33.2 43.6 35 44.5 37 44.5" stroke="#748091" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M14 39C8 40 5 44 4 49" stroke="#C9D6E5" stroke-width="3" stroke-linecap="round"/>
-                    <path d="M50 39C56 40 59 44 60 49" stroke="#C9D6E5" stroke-width="3" stroke-linecap="round"/>
-                </svg>
-            </div>
-            <div class="sidebar-mouse-caption">Behavior dashboard</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 # =============================================================================
@@ -389,7 +307,6 @@ try:
         st.markdown("---")
         st.caption(f"Sessions: {len(df_mouse)}")
         st.caption(f"Mice: {df['Mouse_ID'].nunique()}")
-        sidebar_mouse_logo()
 
     c1, c2, c3 = st.columns(3)
     with c1:
